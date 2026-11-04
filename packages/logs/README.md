@@ -1,9 +1,5 @@
 # Bode_Logs
 
-> **Proprietary.** This package is the property of its owner (Fabricio) and is not open source. See `LICENSE`.
-> Developed in the monorepo [ofabric-io/bode-magento-otel](https://github.com/ofabric-io/bode-magento-otel) and published
-> from it, in lockstep with its sibling packages.
-
 Structured logs for Magento 2. Every record Magento's logger writes, and every exception it is given, becomes **one JSON
 object per line**, shaped after the [OpenTelemetry log data model](https://opentelemetry.io/docs/specs/otel/logs/data-model/),
 with the `trace_id` and `span_id` of the current span and context a person debugging at 3 a.m. needs: the class that
