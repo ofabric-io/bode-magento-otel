@@ -13,7 +13,7 @@ export COMPOSER_ROOT_VERSION=dev-main
 
 # A copy of the packages, so the throwaway project resolves them from a clean tree (no vendor/, no caches).
 mkdir "$WORK/packages"
-for p in tracing metrics; do
+for p in tracing metrics logs; do
   cp -r "$ROOT/packages/$p" "$WORK/packages/$p"
 done
 
@@ -31,8 +31,8 @@ cat > composer.json <<JSON
     "config": {"allow-plugins": {"magento/*": false}}
 }
 JSON
-composer require --no-interaction --no-progress "bode/module-metrics:dev-main"
-for p in bode/module-tracing bode/module-metrics; do composer show "$p" | grep -E "^(name|versions)"; done
+composer require --no-interaction --no-progress "bode/module-metrics:dev-main" "bode/module-logs:dev-main"
+for p in bode/module-tracing bode/module-metrics bode/module-logs; do composer show "$p" | grep -E "^(name|versions)"; done
 composer dump-autoload --optimize --no-interaction
 
 php "$ROOT/bin/verify-install-check.php"

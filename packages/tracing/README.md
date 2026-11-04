@@ -86,7 +86,9 @@ A Monolog processor, registered in `etc/di.xml` on `Magento\Framework\Logger\Mon
 [2026-11-04T13:45:23.967357+00:00] main.ERROR: payment declined {"order":"x"} {"trace_id":"0af7...","span_id":"26...","trace_flags":"01"}
 ```
 
-Records written outside a span get no ids. To ship the lines to Loki and keep multi-line stack traces as one entry, see
+Records written outside a span get no ids. For structured JSON lines instead of this text format, with the ids at
+the top level and the exception as data, install `bode/module-logs`, which reuses the span lookup of this module
+(`Api\TraceContextProviderInterface`). To ship the lines to Loki and keep multi-line stack traces as one entry, see
 the Alloy pipeline of the project that uses this module; a derived field with the regex `"trace_id":"([0-9a-f]{32})"`
 links a line to its trace in Grafana.
 

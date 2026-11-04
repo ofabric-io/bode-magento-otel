@@ -1,0 +1,30 @@
+{
+    "name": "bode/module-logs",
+    "description": "Structured JSON logs for Magento 2: every log record and exception as one OpenTelemetry-shaped JSON line with trace and span ids, the emitting class, the cron job or CLI command and structured exception data.",
+    "type": "magento2-module",
+    "license": "proprietary",
+    "keywords": ["magento2", "opentelemetry", "otel", "logging", "json", "structured-logging", "observability"],
+    "homepage": "https://github.com/ofabric-io/bode-magento-otel",
+    "support": {
+        "issues": "https://github.com/ofabric-io/bode-magento-otel/issues",
+        "source": "https://github.com/ofabric-io/bode-magento-otel"
+    },
+    "require": {
+        "php": ">=8.5",
+        "magento/framework": "^103.0",
+        "magento/module-cron": "^100.4",
+        "monolog/monolog": "^3.6",
+        "bode/module-tracing": "self.version"
+    },
+    "suggest": {
+        "ext-opentelemetry": "With the OpenTelemetry SDK, log lines carry the trace_id and span_id of the current span",
+        "open-telemetry/api": "Needed to read the current span for trace_id and span_id"
+    },
+    "autoload": {
+        "files": ["registration.php"],
+        "psr-4": {
+            "Bode\\Logs\\": ""
+        },
+        "exclude-from-classmap": ["/Test/"]
+    }
+}

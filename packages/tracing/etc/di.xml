@@ -6,6 +6,7 @@
     <preference for="Bode\Tracing\Api\RouteNormalizerInterface" type="Bode\Tracing\Model\RouteNormalizer"/>
     <preference for="Bode\Tracing\Api\PrivacyInterface" type="Bode\Tracing\Model\Privacy"/>
     <preference for="Bode\Tracing\Api\TelemetryStateInterface" type="Bode\Tracing\Model\TelemetryState"/>
+    <preference for="Bode\Tracing\Api\TraceContextProviderInterface" type="Bode\Tracing\Model\TraceContextProvider"/>
 
     <!-- Reads the process environment, the module's only configuration source. -->
     <type name="Bode\Tracing\Model\Environment">

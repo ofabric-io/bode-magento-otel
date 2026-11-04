@@ -15,12 +15,13 @@ $fail = static function (string $message): never {
     exit(1);
 };
 
-foreach (['Bode\Tracing\Hook\Runtime', 'Bode\Metrics\Hook\MetricsRuntime'] as $class) {
+$classes = ['Bode\Tracing\Hook\Runtime', 'Bode\Metrics\Hook\MetricsRuntime', 'Bode\Logs\Model\FatalErrorReporter'];
+foreach ($classes as $class) {
     class_exists($class) || $fail("missing class $class");
 }
 
 $registered = (new ComponentRegistrar())->getPaths(ComponentRegistrar::MODULE);
-foreach (['Bode_Tracing', 'Bode_Metrics'] as $module) {
+foreach (['Bode_Tracing', 'Bode_Metrics', 'Bode_Logs'] as $module) {
     if (!isset($registered[$module]) || !is_file($registered[$module] . '/etc/module.xml')) {
         $fail("$module is not registered");
     }
@@ -33,4 +34,4 @@ foreach (array_keys($map) as $class) {
     }
 }
 
-echo "OK: both modules installed, registered and free of test classes\n";
+echo "OK: all modules installed, registered and free of test classes\n";

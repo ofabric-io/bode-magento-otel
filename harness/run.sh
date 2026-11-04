@@ -6,6 +6,7 @@
 #   ALLOY_OTLP_CONFIG=path harness/run.sh collector  start an Alloy OTLP pipeline in front of LGTM
 #   harness/run.sh scenarios  run every scenario once (ENDPOINT=http://bode-alloy-otlp:4318 to go
 #                                           through the collector, which turns delta metrics into cumulative ones)
+#   harness/run.sh logs       Bode_Logs end to end: lines checked against the contract and against Tempo
 #   harness/run.sh down
 #
 # Needs only Docker. Grafana: http://localhost:3000 (admin/admin), Tempo API: http://localhost:3200.
@@ -27,14 +28,18 @@ case "${1:-}" in
   up)
     docker network inspect "$NET" >/dev/null 2>&1 || docker network create "$NET" >/dev/null
     docker rm -f "$LGTM" >/dev/null 2>&1 || true
-    docker run -d --name "$LGTM" --network "$NET" -p 3000:3000 -p 3200:3200 -p 4318:4318 -p 9090:9090 -p 3100:3100 \
+    # LGTM_PUBLISH="" publishes nothing (when the host ports are taken); the scenarios only need the Docker network.
+    # shellcheck disable=SC2086
+    docker run -d --name "$LGTM" --network "$NET" \
+      ${LGTM_PUBLISH-"-p 3000:3000 -p 3200:3200 -p 4318:4318 -p 9090:9090 -p 3100:3100"} \
       grafana/otel-lgtm:latest >/dev/null
     docker image inspect "$IMAGE" >/dev/null 2>&1 || docker build -q -t "$IMAGE" docker/php >/dev/null
     docker volume inspect bode-otel-harness-vendor >/dev/null 2>&1 || docker volume create bode-otel-harness-vendor >/dev/null
     docker run --rm -v "$PWD/harness:/h" -v bode-otel-harness-vendor:/harness-vendor -w /harness-vendor \
       "$IMAGE" sh -c 'cp /h/composer.json . && composer install --no-interaction --no-progress -q'
     echo "waiting for LGTM..."
-    until curl -fsS http://localhost:3200/ready >/dev/null 2>&1; do sleep 3; done
+    until docker run --rm --network "$NET" "$IMAGE" php -r 'exit(@file_get_contents("http://bode-lgtm:3200/ready") ? 0 : 1);' \
+      >/dev/null 2>&1; do sleep 3; done
     echo "ready"
     ;;
   collector)
@@ -62,6 +67,31 @@ case "${1:-}" in
         -e MAGENTO_OTEL_IP_MODE="${IP_MODE:-full}" -e MAGENTO_OTEL_CORRELATION_HEADERS=CF-Ray -e MAGENTO_OTEL_OUTBOUND_HOSTS=bode-lgtm \
         "$IMAGE" php /repo/harness/run.php "$s"
     done
+    ;;
+  logs)
+    # Bode_Logs end to end: run the logging scenarios with the real extension, check every line against the contract and
+    # that the trace ids in the lines exist in Tempo, and that an uncaught exception reaches stderr as one JSON line.
+    run_logs() { # run_logs <scenario> (stdout and stderr are the scenario's)
+      php_run -e OTEL_PHP_AUTOLOAD_ENABLED=true -e OTEL_SERVICE_NAME=bode-harness \
+        -e OTEL_TRACES_EXPORTER=otlp -e OTEL_METRICS_EXPORTER=none -e OTEL_LOGS_EXPORTER=none \
+        -e OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf -e "OTEL_EXPORTER_OTLP_ENDPOINT=${ENDPOINT:-http://$LGTM:4318}" \
+        -e MAGENTO_OTEL_ASSUME_WEB=true -e MAGENTO_OTEL_IP_MODE=full -e MAGENTO_OTEL_CORRELATION_HEADERS=CF-Ray \
+        -e OTEL_RESOURCE_ATTRIBUTES=service.version=harness,deployment.environment.name=local \
+        "$IMAGE" php /repo/harness/run.php "$1"
+    }
+    for s in log-json log-json-web; do
+      echo "== $s"
+      run_logs "$s" | tee /dev/stderr | php_run -i "$IMAGE" php /repo/harness/verify-logs.php "http://$LGTM:3200"
+    done
+    echo "== log-uncaught (stderr)"
+    err=$(run_logs log-uncaught 2>&1 >/dev/null || true)
+    echo "$err" | head -3
+    echo "$err" | grep -m1 '^{' | php_run -i "$IMAGE" php -r '
+      $l = json_decode((string) stream_get_contents(STDIN), true);
+      $ok = is_array($l) && ($l["severity_number"] ?? 0) === 21 && ($l["attributes"]["exception.type"] ?? "") === "RuntimeException"
+        && ($l["attributes"]["exception.cause"][0]["type"] ?? "") === "LogicException";
+      echo $ok ? "ok    uncaught exception reached stderr as structured JSON\n" : "FAIL  uncaught exception line\n";
+      exit($ok ? 0 : 1);'
     ;;
   down)
     docker rm -f "$LGTM" bode-alloy-otlp >/dev/null 2>&1 || true

@@ -14,6 +14,9 @@
         <testsuite name="tracing">
             <directory>packages/tracing/Test/Unit</directory>
         </testsuite>
+        <testsuite name="logs">
+            <directory>packages/logs/Test/Unit</directory>
+        </testsuite>
         <testsuite name="metrics">
             <directory>packages/metrics/Test/Unit</directory>
         </testsuite>
@@ -23,10 +26,12 @@
     </testsuites>
     <source>
         <include>
+            <directory>packages/logs</directory>
             <directory>packages/tracing</directory>
             <directory>packages/metrics</directory>
         </include>
         <exclude>
+            <directory>packages/logs/Test</directory>
             <directory>packages/tracing/Test</directory>
             <directory>packages/metrics/Test</directory>
         </exclude>

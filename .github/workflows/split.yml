@@ -4,8 +4,8 @@ name: Split
 # repository that mirrors its packages/<name> directory: main on every push to main, and every v* tag as the same tag.
 # Both packages are released together (the metrics package requires self.version of the tracing one).
 #
-# One-time setup (docs/releasing.md): create the two empty split repositories, add the secret SPLIT_TOKEN (a fine-grained
-# token with contents:write on exactly those two repositories), set the variable SPLIT_ENABLED to true, and submit both
+# One-time setup (docs/releasing.md): create the empty split repositories, add the secret SPLIT_TOKEN (a fine-grained
+# token with contents:write on exactly those repositories), set the variable SPLIT_ENABLED to true, and submit the
 # split repositories to Packagist.
 
 on:
@@ -26,6 +26,7 @@ jobs:
       fail-fast: false
       matrix:
         package:
+          - { name: logs, repo: ofabric-io/bode-module-logs }
           - { name: tracing, repo: ofabric-io/bode-module-tracing }
           - { name: metrics, repo: ofabric-io/bode-module-metrics }
     steps:

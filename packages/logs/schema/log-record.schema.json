@@ -1,0 +1,101 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://github.com/ofabric-io/bode-magento-otel/packages/logs/schema/log-record.schema.json",
+    "title": "Bode_Logs record",
+    "description": "One line written by Bode_Logs. Shaped after the OpenTelemetry log data model (https://opentelemetry.io/docs/specs/otel/logs/data-model/): the top level carries the record's own fields, resource says who logged, attributes carries everything else under OpenTelemetry semantic-convention names.",
+    "type": "object",
+    "required": ["timestamp", "severity_text", "severity_number", "body", "resource", "attributes"],
+    "properties": {
+        "timestamp": {
+            "type": "string",
+            "description": "ISO 8601, UTC, microseconds",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$"
+        },
+        "severity_text": {
+            "type": "string",
+            "enum": ["DEBUG", "INFO", "NOTICE", "WARNING", "ERROR", "CRITICAL", "ALERT", "EMERGENCY"]
+        },
+        "severity_number": {
+            "type": "integer",
+            "description": "OpenTelemetry severity number: DEBUG 5, INFO 9, NOTICE 10, WARNING 13, ERROR 17, CRITICAL 21, ALERT 22, EMERGENCY 24",
+            "enum": [5, 9, 10, 13, 17, 21, 22, 24]
+        },
+        "body": {"type": "string"},
+        "trace_id": {"type": "string", "pattern": "^[0-9a-f]{32}$"},
+        "span_id": {"type": "string", "pattern": "^[0-9a-f]{16}$"},
+        "trace_flags": {"type": "string", "pattern": "^[0-9a-f]{2}$"},
+        "resource": {
+            "type": "object",
+            "description": "OpenTelemetry resource attributes of the process",
+            "required": ["service.name"],
+            "properties": {
+                "service.name": {"type": "string"},
+                "service.version": {"type": "string"},
+                "deployment.environment.name": {"type": "string"},
+                "host.name": {"type": "string"},
+                "process.pid": {"type": "integer"},
+                "process.runtime.name": {"type": "string"},
+                "process.runtime.version": {"type": "string"}
+            }
+        },
+        "attributes": {
+            "type": "object",
+            "properties": {
+                "log.channel": {"type": "string"},
+                "log.truncated": {"type": "array", "items": {"type": "string"}},
+                "code.namespace": {"type": "string"},
+                "code.function": {"type": "string"},
+                "code.file.path": {"type": "string"},
+                "code.line.number": {"type": "integer"},
+                "magento.area": {"type": "string"},
+                "http.request.method": {"type": "string"},
+                "http.route": {"type": "string"},
+                "url.path": {"type": "string"},
+                "client.address": {"type": "string"},
+                "correlation.id": {"type": "string"},
+                "cli.command": {"type": "string"},
+                "messaging.consumer": {"type": "string"},
+                "cron.job_code": {"type": "string"},
+                "cron.schedule_id": {"type": "string"},
+                "exception.type": {"type": "string"},
+                "exception.message": {"type": "string"},
+                "exception.stacktrace": {"type": "string"},
+                "exception.file": {"type": "string"},
+                "exception.line": {"type": "integer"},
+                "exception.code": {"type": ["integer", "string"]},
+                "exception.frames": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "required": ["function"],
+                        "properties": {
+                            "class": {"type": "string"},
+                            "function": {"type": "string"},
+                            "file": {"type": "string"},
+                            "line": {"type": "integer"}
+                        }
+                    }
+                },
+                "exception.frames_dropped": {"type": "integer"},
+                "exception.cause": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "required": ["type", "message"],
+                        "properties": {
+                            "type": {"type": "string"},
+                            "message": {"type": "string"},
+                            "file": {"type": "string"},
+                            "line": {"type": "integer"}
+                        }
+                    }
+                },
+                "error.fingerprint": {"type": "string", "pattern": "^[0-9a-f]{16}$"},
+                "error.type": {"type": "string"},
+                "context": {"description": "The PSR-3 context of the call, normalised: bounded, valid UTF-8, JSON-safe"},
+                "extra": {"description": "The extra of the Monolog record, normalised"},
+                "bode.logs.error": {"type": "string", "description": "Present only when the record could not be formatted normally"}
+            }
+        }
+    }
+}

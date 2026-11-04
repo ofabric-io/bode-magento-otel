@@ -66,7 +66,7 @@ jobs:
           restore-keys: composer-quality-${{ runner.os }}-
       - name: Install the coding-standard toolchain
         run: composer install --no-interaction --no-progress --prefer-dist --working-dir=tools/quality
-      - name: composer validate (root, both packages, both tool trees) and phpcs
+      - name: composer validate (root, all packages, both tool trees) and phpcs
         run: |
           composer validate --strict --no-check-publish
           composer validate --strict --no-check-publish --working-dir=tools/quality
@@ -123,7 +123,7 @@ jobs:
       - run: composer test
 
   install:
-    name: Install check (a fresh Magento project can require both packages)
+    name: Install check (a fresh Magento project can require the packages)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -138,7 +138,7 @@ jobs:
     name: Release / semantic version from Conventional Commits
     # Every merge to main that carries a releasable commit (feat, fix, perf, revert, or a breaking change) becomes a
     # release: semantic-release computes the next version, tags it vX.Y.Z and creates the GitHub release. The tag is
-    # then split into both package repositories. Nothing releasable (docs, ci, chore, ...) means no release.
+    # then split into the package repositories. Nothing releasable (docs, ci, chore, ...) means no release.
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [lint, analyse, test, install]
     runs-on: ubuntu-latest

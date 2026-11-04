@@ -136,6 +136,13 @@ namespace Magento\Indexer\Model {
     }
 }
 
+namespace Magento\Framework\ObjectManager {
+    interface ResetAfterRequestInterface
+    {
+        public function _resetState(): void;
+    }
+}
+
 namespace Magento\Framework\App\Cache {
     class Manager
     {

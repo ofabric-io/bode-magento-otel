@@ -1,25 +1,27 @@
 # bode-magento-otel
 
-OpenTelemetry for Magento 2, as two Composer packages developed in this monorepo:
+OpenTelemetry for Magento 2, as three Composer packages developed in this monorepo:
 
 | Package | Magento module | What it does |
 |---|---|---|
 | [`bode/module-tracing`](packages/tracing) | `Bode_Tracing` | Traces: HTTP, cron, CLI, indexers, cache, queues, outbound HTTP, plus `trace_id` on log lines |
 | [`bode/module-metrics`](packages/metrics) | `Bode_Metrics` | Metrics with a hard low-cardinality contract, plus a state collector |
+| [`bode/module-logs`](packages/logs) | `Bode_Logs` | Every Magento log record and exception as one OpenTelemetry-shaped JSON line, with trace and span ids and context |
 
-Both are vendor-neutral and a no-op without `ext-opentelemetry`. They are released together; installing the metrics
-package installs the tracing package at the same version.
+All are vendor-neutral and, apart from the logs package (which then simply has no trace ids), a no-op without
+`ext-opentelemetry`. They are released together; installing the metrics or the logs package installs the tracing package
+at the same version.
 
 ```bash
-composer require bode/module-metrics   # or bode/module-tracing alone
-bin/magento module:enable Bode_Metrics Bode_Tracing
+composer require bode/module-metrics bode/module-logs   # or bode/module-tracing alone
+bin/magento module:enable Bode_Metrics Bode_Logs Bode_Tracing
 bin/magento setup:upgrade
 ```
 
 ## Repository layout
 
 ```
-packages/tracing, packages/metrics   the two packages (each is a complete Magento module with its own composer.json)
+packages/tracing, metrics, logs      the packages (each is a complete Magento module with its own composer.json)
 composer.json                        development root: a path repository on packages/* with symlinks
 tools/quality, tools/phpstan         isolated lint toolchains (their dependency trees conflict)
 tests/Unit                           conventions of the packages (no shop references, allowed dependencies, manifests)
@@ -29,7 +31,7 @@ docs/releasing.md                    how a release reaches Packagist
 ```
 
 The root `composer.json` is what makes local development work: `packages/*` is a path repository with symlinks, so the
-root installs both packages from the working tree and edits show up at once.
+root installs the packages from the working tree and edits show up at once.
 
 ## Develop
 
@@ -40,7 +42,7 @@ Only Docker is needed. `bin/dev` runs a command in an image with PHP 8.5, the ex
 bin/install                    # composer install for the root and both tool trees
 bin/dev composer lint          # composer manifests + phpcs (Magento2 standard, PHPCompatibility 8.5)
 bin/dev composer analyse       # PHPStan level 5 with the Magento extension
-bin/dev composer test          # unit tests of both packages + repository conventions
+bin/dev composer test          # unit tests of all packages + repository conventions
 bin/dev composer verify        # all of the above
 bin/dev bin/verify-install     # a throwaway project requires the packages like a Magento store would
 harness/run.sh up && harness/run.sh scenarios   # real telemetry into a local Grafana (Docker)

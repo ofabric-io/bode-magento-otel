@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "841f4f90c80d6bc2d02daad810808c16",
+    "content-hash": "dc0a447ffab75bbb2a77eabed3c83332",
     "packages": [
         {
             "name": "aws/aws-crt-php",
@@ -62,16 +62,16 @@
         },
         {
             "name": "aws/aws-sdk-php",
-            "version": "3.402.5",
+            "version": "3.402.6",
             "source": {
                 "type": "git",
                 "url": "https://github.com/aws/aws-sdk-php.git",
-                "reference": "ffff4dbeda1c386f66e7e819afbd55406aa9799b"
+                "reference": "237d6b55518f052cb136a55d4727ecc7d0073d05"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/aws/aws-sdk-php/zipball/ffff4dbeda1c386f66e7e819afbd55406aa9799b",
-                "reference": "ffff4dbeda1c386f66e7e819afbd55406aa9799b",
+                "url": "https://api.github.com/repos/aws/aws-sdk-php/zipball/237d6b55518f052cb136a55d4727ecc7d0073d05",
+                "reference": "237d6b55518f052cb136a55d4727ecc7d0073d05",
                 "shasum": ""
             },
             "require": {
@@ -153,9 +153,63 @@
             "support": {
                 "forum": "https://github.com/aws/aws-sdk-php/discussions",
                 "issues": "https://github.com/aws/aws-sdk-php/issues",
-                "source": "https://github.com/aws/aws-sdk-php/tree/3.402.5"
+                "source": "https://github.com/aws/aws-sdk-php/tree/3.402.6"
             },
-            "time": "2026-10-30T18:04:02+00:00"
+            "time": "2026-11-04T20:11:50+00:00"
+        },
+        {
+            "name": "bode/module-logs",
+            "version": "dev-main",
+            "dist": {
+                "type": "path",
+                "url": "packages/logs",
+                "reference": "b2c27bdf7fe6976d0bb508047391ae080f6d9644"
+            },
+            "require": {
+                "bode/module-tracing": "self.version",
+                "magento/framework": "^103.0",
+                "magento/module-cron": "^100.4",
+                "monolog/monolog": "^3.6",
+                "php": ">=8.5"
+            },
+            "suggest": {
+                "ext-opentelemetry": "With the OpenTelemetry SDK, log lines carry the trace_id and span_id of the current span",
+                "open-telemetry/api": "Needed to read the current span for trace_id and span_id"
+            },
+            "type": "magento2-module",
+            "autoload": {
+                "files": [
+                    "registration.php"
+                ],
+                "psr-4": {
+                    "Bode\\Logs\\": ""
+                },
+                "exclude-from-classmap": [
+                    "/Test/"
+                ]
+            },
+            "license": [
+                "proprietary"
+            ],
+            "description": "Structured JSON logs for Magento 2: every log record and exception as one OpenTelemetry-shaped JSON line with trace and span ids, the emitting class, the cron job or CLI command and structured exception data.",
+            "homepage": "https://github.com/ofabric-io/bode-magento-otel",
+            "keywords": [
+                "json",
+                "logging",
+                "magento2",
+                "observability",
+                "opentelemetry",
+                "otel",
+                "structured-logging"
+            ],
+            "support": {
+                "issues": "https://github.com/ofabric-io/bode-magento-otel/issues",
+                "source": "https://github.com/ofabric-io/bode-magento-otel"
+            },
+            "transport-options": {
+                "symlink": true,
+                "relative": true
+            }
         },
         {
             "name": "bode/module-metrics",
@@ -11688,6 +11742,7 @@
     "aliases": [],
     "minimum-stability": "dev",
     "stability-flags": {
+        "bode/module-logs": 20,
         "bode/module-metrics": 20,
         "bode/module-tracing": 20
     },
