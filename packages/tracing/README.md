@@ -1,9 +1,5 @@
 # Bode_Tracing
 
-> **Proprietary.** This package is the property of its owner (Fabricio) and is not open source. See `LICENSE`.
-> Developed in the monorepo [ofabric-io/bode-magento-otel](https://github.com/ofabric-io/bode-magento-otel) and published
-> from it, in lockstep with its sibling package.
-
 OpenTelemetry **traces** for Magento 2: storefront, admin, REST and GraphQL requests, cron jobs, CLI commands,
 indexers and Mview, cache flushes, queue consumer messages and outbound HTTP, plus log correlation (`trace_id` on every
 Magento log line). General-purpose and vendor-neutral: everything shop-specific is configuration through environment

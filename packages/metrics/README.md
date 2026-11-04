@@ -1,9 +1,5 @@
 # Bode_Metrics
 
-> **Proprietary.** This package is the property of its owner (Fabricio) and is not open source. See `LICENSE`.
-> Developed in the monorepo [ofabric-io/bode-magento-otel](https://github.com/ofabric-io/bode-magento-otel) and published
-> from it, in lockstep with its sibling package.
-
 OpenTelemetry **metrics** for Magento 2 with a hard low-cardinality contract: HTTP, cron, indexers, queues, cache,
 outbound HTTP, database and Redis, a few commerce counters, and a collector that exports the state of cron, indexers,
 Mview and the database queue. General-purpose: nothing shop-specific lives in the code, everything is configuration
