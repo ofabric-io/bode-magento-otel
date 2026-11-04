@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Installs the root and both tool trees into the dev image's volumes.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+bin/dev sh -c 'composer install --no-interaction --no-progress && composer install --no-interaction --no-progress -d tools/quality && composer install --no-interaction --no-progress -d tools/phpstan'

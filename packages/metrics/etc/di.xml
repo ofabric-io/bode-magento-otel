@@ -1,0 +1,30 @@
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:framework:ObjectManager/etc/config.xsd">
+    <!-- Reads the process environment, like the rest of the module. -->
+    <type name="Bode\Tracing\Model\Environment">
+        <arguments>
+            <argument name="values" xsi:type="null"/>
+        </arguments>
+    </type>
+
+    <!-- bin/magento bode:metrics:collect. The collector is a Proxy because builds run bin/magento without a
+         database and the command is instantiated whenever the command list is. -->
+    <type name="Magento\Framework\Console\CommandListInterface">
+        <arguments>
+            <argument name="commands" xsi:type="array">
+                <item name="bode_metrics_collect" xsi:type="object">Bode\Metrics\Console\Command\CollectCommand</item>
+            </argument>
+        </arguments>
+    </type>
+    <type name="Bode\Metrics\Console\Command\CollectCommand">
+        <arguments>
+            <argument name="collector" xsi:type="object">Bode\Metrics\Model\Collector\Proxy</argument>
+        </arguments>
+    </type>
+    <type name="Bode\Metrics\Cron\Collect">
+        <arguments>
+            <argument name="collector" xsi:type="object">Bode\Metrics\Model\Collector\Proxy</argument>
+        </arguments>
+    </type>
+</config>

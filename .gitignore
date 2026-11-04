@@ -1,0 +1,6 @@
+vendor/
+tools/*/vendor/
+.phpunit.cache/
+var/
+composer.lock.bak
+.idea/

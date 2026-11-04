@@ -1,0 +1,30 @@
+{
+    "name": "bode/module-metrics",
+    "description": "OpenTelemetry metrics for Magento 2 with a hard low-cardinality contract: HTTP, cron, indexers, queues, cache, outbound HTTP and a state collector. A no-op without ext-opentelemetry.",
+    "type": "magento2-module",
+    "license": "proprietary",
+    "keywords": ["magento2", "opentelemetry", "otel", "metrics", "observability"],
+    "homepage": "https://github.com/ofabric-io/bode-magento-otel",
+    "support": {
+        "issues": "https://github.com/ofabric-io/bode-magento-otel/issues",
+        "source": "https://github.com/ofabric-io/bode-magento-otel"
+    },
+    "require": {
+        "php": ">=8.3",
+        "magento/framework": "^103.0",
+        "magento/module-cron": "^100.4",
+        "bode/module-tracing": "self.version"
+    },
+    "suggest": {
+        "ext-opentelemetry": "Required at runtime for the hooks that time requests, jobs and calls",
+        "open-telemetry/sdk": "Required to export metrics",
+        "open-telemetry/exporter-otlp": "Required to export metrics over OTLP"
+    },
+    "autoload": {
+        "files": ["registration.php"],
+        "psr-4": {
+            "Bode\\Metrics\\": ""
+        },
+        "exclude-from-classmap": ["/Test/"]
+    }
+}

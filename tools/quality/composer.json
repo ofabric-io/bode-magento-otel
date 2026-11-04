@@ -1,0 +1,17 @@
+{
+    "name": "bode/tools-quality",
+    "description": "Coding-standard toolchain (phpcs with the Magento standard and PHPCompatibility). Isolated: it conflicts with the PHPStan tree.",
+    "type": "project",
+    "license": "proprietary",
+    "require": {
+        "dealerdirect/phpcodesniffer-composer-installer": "^1.2",
+        "magento/magento-coding-standard": "^41.0",
+        "phpcompatibility/php-compatibility": "^9.3"
+    },
+    "config": {
+        "allow-plugins": {
+            "dealerdirect/phpcodesniffer-composer-installer": true
+        },
+        "sort-packages": true
+    }
+}

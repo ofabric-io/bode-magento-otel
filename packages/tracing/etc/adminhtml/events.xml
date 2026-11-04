@@ -1,0 +1,20 @@
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:framework:Event/etc/events.xsd">
+    <!-- Admin audit trail as span events (who, entity type, action; never values). Admin area only. -->
+    <event name="model_save_after">
+        <observer name="bode_tracing_admin_audit_save" instance="Bode\Tracing\Observer\AdminAudit"/>
+    </event>
+    <event name="model_delete_after">
+        <observer name="bode_tracing_admin_audit_delete" instance="Bode\Tracing\Observer\AdminAudit"/>
+    </event>
+    <event name="adminhtml_cache_flush_all">
+        <observer name="bode_tracing_admin_audit_flush_all" instance="Bode\Tracing\Observer\AdminAudit"/>
+    </event>
+    <event name="adminhtml_cache_flush_system">
+        <observer name="bode_tracing_admin_audit_flush_system" instance="Bode\Tracing\Observer\AdminAudit"/>
+    </event>
+    <event name="admin_user_authenticate_after">
+        <observer name="bode_tracing_admin_audit_login" instance="Bode\Tracing\Observer\AdminAudit"/>
+    </event>
+</config>

@@ -1,0 +1,75 @@
+{
+    "name": "bode/magento-otel",
+    "description": "Monorepo of the Bode OpenTelemetry modules for Magento 2: bode/module-tracing and bode/module-metrics. Development root only, never installed by consumers.",
+    "type": "project",
+    "license": "proprietary",
+    "repositories": [
+        {
+            "type": "path",
+            "url": "packages/*",
+            "options": {
+                "symlink": true
+            }
+        },
+        {
+            "name": "mage-os-mirror",
+            "type": "composer",
+            "url": "https://mirror.mage-os.org/",
+            "only": ["magento/*"]
+        }
+    ],
+    "require": {
+        "php": ">=8.3",
+        "bode/module-metrics": "dev-main",
+        "bode/module-tracing": "dev-main"
+    },
+    "require-dev": {
+        "magento/module-graph-ql": "*",
+        "magento/module-webapi": "*",
+        "open-telemetry/api": "^1.4",
+        "open-telemetry/exporter-otlp": "^1.3",
+        "open-telemetry/sdk": "^1.4",
+        "open-telemetry/sem-conv": "^1.30",
+        "phpunit/phpunit": "^12.0"
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Bode\\Tests\\": "tests/"
+        }
+    },
+    "config": {
+        "sort-packages": true,
+        "preferred-install": "dist",
+        "allow-plugins": {
+            "magento/composer-dependency-version-audit-plugin": false,
+            "magento/magento-composer-installer": false,
+            "magento/composer-root-update-plugin": false
+        }
+    },
+    "scripts": {
+        "lint": [
+            "@composer validate --strict --no-check-publish",
+            "@lint:packages",
+            "tools/quality/vendor/bin/phpcs"
+        ],
+        "lint:packages": [
+            "@composer validate --strict --no-check-publish --working-dir=packages/tracing",
+            "@composer validate --strict --no-check-publish --working-dir=packages/metrics"
+        ],
+        "analyse": "tools/phpstan/vendor/bin/phpstan analyse --memory-limit=1G --no-progress",
+        "test": "phpunit",
+        "verify": [
+            "@lint",
+            "@analyse",
+            "@test"
+        ]
+    },
+    "scripts-descriptions": {
+        "lint": "Composer manifests and coding standard (phpcs, Magento2 + PHPCompatibility)",
+        "analyse": "Static analysis (PHPStan level 5 with the Magento extension)",
+        "test": "Unit tests of both packages and the repository conventions",
+        "verify": "Everything CI runs: lint, analyse, test"
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true
+}

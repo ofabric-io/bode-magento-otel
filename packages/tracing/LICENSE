@@ -1,0 +1,7 @@
+Copyright (c) 2026 Fabricio. All rights reserved.
+
+This software is proprietary. No licence to use, copy, modify, merge, publish, distribute, sublicense or sell it is
+granted except by written permission of the copyright holder.
+
+Parts of Bode_Tracing are derived from magento2-opentelemetry (MIT, copyright (c) 2025 mumzworld). The MIT licence applies
+to those parts and its notice is kept in LICENSE-UPSTREAM-MIT and THIRD_PARTY_NOTICES.md; it does not extend to the rest.

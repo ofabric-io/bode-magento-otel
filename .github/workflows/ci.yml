@@ -1,0 +1,119 @@
+name: CI
+
+# Lint, static analysis, unit tests and an install check. Nothing here needs secrets or a Magento licence: Magento's
+# framework comes from the public Mage-OS mirror, and the unit tests of the packages mock nothing from Magento.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  PHP_VERSION: "8.5"
+  # Extensions Magento's framework requires, so the real framework installs for PHPStan.
+  PHP_EXTENSIONS: bcmath, ftp, gd, intl, soap, sockets, sodium, xsl, zip, pdo_mysql
+
+jobs:
+  pr-title:
+    name: Lint / PR title (Conventional Commits)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    steps:
+      - uses: amannn/action-semantic-pull-request@v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  lint:
+    name: Lint / composer manifests and phpcs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          extensions: ${{ env.PHP_EXTENSIONS }}
+          tools: composer:v2
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/composer
+          key: composer-quality-${{ runner.os }}-${{ hashFiles('tools/quality/composer.lock') }}
+          restore-keys: composer-quality-${{ runner.os }}-
+      - name: Install the coding-standard toolchain
+        run: composer install --no-interaction --no-progress --prefer-dist --working-dir=tools/quality
+      - name: composer validate (root, both packages, both tool trees) and phpcs
+        run: |
+          composer validate --strict --no-check-publish
+          composer validate --strict --no-check-publish --working-dir=tools/quality
+          composer validate --strict --no-check-publish --working-dir=tools/phpstan
+          composer lint:packages
+          tools/quality/vendor/bin/phpcs
+
+  analyse:
+    name: Static analysis / phpstan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          extensions: ${{ env.PHP_EXTENSIONS }}
+          tools: composer:v2
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/composer
+          key: composer-root-${{ runner.os }}-${{ hashFiles('composer.lock', 'tools/phpstan/composer.lock') }}
+          restore-keys: composer-root-${{ runner.os }}-
+      - name: Install (root with the Magento framework, then the PHPStan tree)
+        env:
+          COMPOSER_ROOT_VERSION: dev-main
+        run: |
+          composer install --no-interaction --no-progress --prefer-dist
+          composer install --no-interaction --no-progress --prefer-dist --working-dir=tools/phpstan
+      - run: composer analyse
+
+  test:
+    name: Unit tests (PHP ${{ matrix.php }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ["8.3", "8.4", "8.5"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: ${{ env.PHP_EXTENSIONS }}
+          tools: composer:v2
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/composer
+          key: composer-root-${{ runner.os }}-${{ hashFiles('composer.lock') }}
+          restore-keys: composer-root-${{ runner.os }}-
+      - name: Install
+        env:
+          COMPOSER_ROOT_VERSION: dev-main
+        run: composer install --no-interaction --no-progress --prefer-dist
+      - run: composer test
+
+  install:
+    name: Install check (a fresh Magento project can require both packages)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          extensions: ${{ env.PHP_EXTENSIONS }}
+          tools: composer:v2
+      - run: bin/verify-install

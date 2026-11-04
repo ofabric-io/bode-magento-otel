@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# Proves the packages are installable the way a Magento project installs them: a throwaway project that knows only the
+# Magento mirror and the packages, requires bode/module-metrics (which must pull bode/module-tracing at the same
+# version), and must end up with both modules' registration.php autoloaded and no test files in the class map.
+#
+# Locally: bin/dev bin/verify-install    In CI: bin/verify-install
+set -euo pipefail
+cd "$(dirname "$0")/.."
+ROOT=$PWD
+WORK=$(mktemp -d)
+trap 'rm -rf "$WORK"' EXIT
+export COMPOSER_ROOT_VERSION=dev-main
+
+# A copy of the packages, so the throwaway project resolves them from a clean tree (no vendor/, no caches).
+mkdir "$WORK/packages"
+for p in tracing metrics; do
+  cp -r "$ROOT/packages/$p" "$WORK/packages/$p"
+done
+
+cd "$WORK"
+cat > composer.json <<JSON
+{
+    "name": "example/shop",
+    "type": "project",
+    "repositories": [
+        {"type": "path", "url": "packages/*", "options": {"symlink": false}},
+        {"type": "composer", "url": "https://mirror.mage-os.org/", "only": ["magento/*"]}
+    ],
+    "minimum-stability": "dev",
+    "prefer-stable": true,
+    "config": {"allow-plugins": {"magento/*": false}}
+}
+JSON
+composer require --no-interaction --no-progress "bode/module-metrics:dev-main"
+for p in bode/module-tracing bode/module-metrics; do composer show "$p" | grep -E "^(name|versions)"; done
+composer dump-autoload --optimize --no-interaction
+
+php "$ROOT/bin/verify-install-check.php"

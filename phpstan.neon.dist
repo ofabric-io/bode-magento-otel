@@ -1,0 +1,22 @@
+parameters:
+    # Level 5: real type errors without drowning in framework-generated-class noise. Raise it, do not lower it.
+    level: 5
+    paths:
+        - packages
+    excludePaths:
+        analyse:
+            - packages/*/Test/*
+    tmpDir: var/phpstan
+    # Magento (framework, installed by the root composer.json) for the Magento extension to resolve
+    bootstrapFiles:
+        - vendor/autoload.php
+        - tools/phpstan/vendor/autoload.php
+    treatPhpDocTypesAsCertain: false
+    disallowedStaticCalls:
+        -
+            method: 'Magento\Framework\App\ObjectManager::getInstance()'
+            message: 'Do not use the ObjectManager; inject dependencies through the constructor.'
+    disallowedMethodCalls:
+        -
+            method: 'Magento\Framework\ObjectManagerInterface::*()'
+            message: 'Do not use the ObjectManager; inject dependencies through the constructor.'

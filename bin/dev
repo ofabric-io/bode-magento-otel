@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Runs a command in the dev image (PHP 8.5, Magento's extensions, ext-opentelemetry, Composer), so the host needs
+# only Docker. vendor/ directories live in named volumes: much faster than bind mounts on Docker Desktop. The image is
+# built on first use.
+#
+#   bin/dev composer install        bin/dev composer verify        bin/dev composer test
+set -euo pipefail
+cd "$(dirname "$0")/.."
+export MSYS_NO_PATHCONV=1
+
+IMAGE=${BODE_DEV_IMAGE:-bode-otel-dev}
+docker image inspect "$IMAGE" >/dev/null 2>&1 || docker build -q -t "$IMAGE" docker/php >/dev/null
+
+exec docker run --rm ${TTY:+-t} \
+  -v "$PWD:/repo" \
+  -v bode-otel-vendor-root:/repo/vendor \
+  -v bode-otel-vendor-quality:/repo/tools/quality/vendor \
+  -v bode-otel-vendor-phpstan:/repo/tools/phpstan/vendor \
+  -v bode-otel-composer-cache:/root/.composer/cache \
+  -e COMPOSER_PROCESS_TIMEOUT=1800 \
+  "$IMAGE" "$@"

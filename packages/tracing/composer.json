@@ -1,0 +1,32 @@
+{
+    "name": "bode/module-tracing",
+    "description": "OpenTelemetry traces for Magento 2: HTTP, cron, CLI, indexers, cache, queues, outbound HTTP. Vendor-neutral, a no-op without ext-opentelemetry.",
+    "type": "magento2-module",
+    "license": "proprietary",
+    "keywords": ["magento2", "opentelemetry", "otel", "tracing", "observability"],
+    "homepage": "https://github.com/ofabric-io/bode-magento-otel",
+    "support": {
+        "issues": "https://github.com/ofabric-io/bode-magento-otel/issues",
+        "source": "https://github.com/ofabric-io/bode-magento-otel"
+    },
+    "require": {
+        "php": ">=8.3",
+        "magento/framework": "^103.0",
+        "psr/log": "^1.1 || ^2.0 || ^3.0"
+    },
+    "suggest": {
+        "ext-opentelemetry": "Required at runtime for any span to be recorded (PECL opentelemetry)",
+        "ext-protobuf": "Recommended for OTLP over http/protobuf",
+        "open-telemetry/sdk": "Required to export telemetry",
+        "open-telemetry/api": "Required to export telemetry",
+        "open-telemetry/exporter-otlp": "Required to export telemetry",
+        "open-telemetry/sem-conv": "Semantic convention constants"
+    },
+    "autoload": {
+        "files": ["registration.php"],
+        "psr-4": {
+            "Bode\\Tracing\\": ""
+        },
+        "exclude-from-classmap": ["/Test/"]
+    }
+}

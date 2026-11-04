@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Unit tests of both packages and of the repository conventions. The packages' unit tests are written without Magento
+  classes, so this runs without a Magento install: composer loads the packages from packages/* through symlinks.
+-->
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
+         bootstrap="vendor/autoload.php"
+         colors="true"
+         cacheDirectory=".phpunit.cache"
+         failOnWarning="true"
+         failOnRisky="true">
+    <testsuites>
+        <testsuite name="tracing">
+            <directory>packages/tracing/Test/Unit</directory>
+        </testsuite>
+        <testsuite name="metrics">
+            <directory>packages/metrics/Test/Unit</directory>
+        </testsuite>
+        <testsuite name="repository">
+            <directory>tests/Unit</directory>
+        </testsuite>
+    </testsuites>
+    <source>
+        <include>
+            <directory>packages/tracing</directory>
+            <directory>packages/metrics</directory>
+        </include>
+        <exclude>
+            <directory>packages/tracing/Test</directory>
+            <directory>packages/metrics/Test</directory>
+        </exclude>
+    </source>
+</phpunit>

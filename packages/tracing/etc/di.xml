@@ -1,0 +1,51 @@
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:framework:ObjectManager/etc/config.xsd">
+    <!-- The shared contracts of this module and Bode_Metrics. They are interfaces so a project can replace one. -->
+    <preference for="Bode\Tracing\Api\InstrumentationGuardInterface" type="Bode\Tracing\Model\Config"/>
+    <preference for="Bode\Tracing\Api\RouteNormalizerInterface" type="Bode\Tracing\Model\RouteNormalizer"/>
+    <preference for="Bode\Tracing\Api\PrivacyInterface" type="Bode\Tracing\Model\Privacy"/>
+    <preference for="Bode\Tracing\Api\TelemetryStateInterface" type="Bode\Tracing\Model\TelemetryState"/>
+
+    <!-- Reads the process environment, the module's only configuration source. -->
+    <type name="Bode\Tracing\Model\Environment">
+        <arguments>
+            <argument name="values" xsi:type="null"/>
+        </arguments>
+    </type>
+    <type name="Bode\Tracing\Model\Config">
+        <arguments>
+            <argument name="runtimeAvailable" xsi:type="null"/>
+        </arguments>
+    </type>
+
+    <!-- Plugin: describe the request (area, store, customer or admin id, role) on the root span once the front
+         controller has run. An after plugin, so it never changes behaviour; it needs DI for sessions and stores,
+         which the static hooks cannot have. -->
+    <type name="Magento\Framework\App\FrontControllerInterface">
+        <plugin name="bode_tracing_enrich_request_span" type="Bode\Tracing\Plugin\EnrichRequestSpan"/>
+    </type>
+    <type name="Bode\Tracing\Plugin\EnrichRequestSpan">
+        <arguments>
+            <argument name="customerSession" xsi:type="object">Magento\Customer\Model\Session\Proxy</argument>
+            <argument name="adminSession" xsi:type="object">Magento\Backend\Model\Auth\Session\Proxy</argument>
+            <argument name="groupRepository" xsi:type="object">
+                Magento\Customer\Api\GroupRepositoryInterface\Proxy
+            </argument>
+        </arguments>
+    </type>
+    <type name="Bode\Tracing\Observer\AdminAudit">
+        <arguments>
+            <argument name="adminSession" xsi:type="object">Magento\Backend\Model\Auth\Session\Proxy</argument>
+        </arguments>
+    </type>
+
+    <!-- Log correlation: every record of Magento's logger carries trace_id, span_id and trace_flags in its extra. -->
+    <type name="Magento\Framework\Logger\Monolog">
+        <arguments>
+            <argument name="processors" xsi:type="array">
+                <item name="bode_trace_context" xsi:type="object">Bode\Tracing\Model\Log\TraceContextProcessor</item>
+            </argument>
+        </arguments>
+    </type>
+</config>

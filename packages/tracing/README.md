@@ -1,0 +1,115 @@
+# Bode_Tracing
+
+> **Proprietary.** This package is the property of its owner (Fabricio) and is not open source. See `LICENSE`.
+> Developed in the monorepo [ofabric-io/bode-magento-otel](https://github.com/ofabric-io/bode-magento-otel) and published
+> from it, in lockstep with its sibling package.
+
+OpenTelemetry **traces** for Magento 2: storefront, admin, REST and GraphQL requests, cron jobs, CLI commands,
+indexers and Mview, cache flushes, queue consumer messages and outbound HTTP, plus log correlation (`trace_id` on every
+Magento log line). General-purpose and vendor-neutral: everything shop-specific is configuration through environment
+variables. A no-op (no errors, negligible cost) when `ext-opentelemetry` or the OpenTelemetry SDK is absent, so
+development, CI and unit tests are unaffected.
+
+It began as a copy of an MIT-licensed project (whose notice is kept) and was rebuilt; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+Metrics are in the sibling module `Bode_Metrics`, which depends on this one for its shared contracts.
+
+
+## Installation
+
+```bash
+composer require bode/module-tracing
+bin/magento module:enable Bode_Tracing
+bin/magento setup:upgrade
+```
+
+## Requirements
+
+- PHP 8.3 or newer, Magento 2.4.x.
+- To record anything: `ext-opentelemetry` (PECL `opentelemetry`) and `open-telemetry/sdk`, `exporter-otlp`, `sem-conv`;
+  `ext-protobuf` is recommended for OTLP over http/protobuf. Without them the module registers nothing.
+- Hooks are registered when Composer loads `registration.php`, i.e. on every PHP process, before Magento runs. That works
+  in production mode with compiled DI: hooks attach to the real classes, not to generated `Interceptor` subclasses.
+
+## What is traced
+
+| Group (default) | Spans |
+|---|---|
+| `http` (on) | One SERVER root span per request in every area, named `<METHOD> <route>`: the Magento full action name (`catalog_product_view`), the REST route template (`/V1/products/:id`) or `graphql <operation>`. Honours an incoming `traceparent`. |
+| `cron` (on) | One root span per job (`cron <job_code>`), with group, final status, error type; Schedule status changes are span events. |
+| `cli` (on) | `cli <command>`, with the exit code. Not for `cron:run` and `queue:consumers:start`, which run for hours. |
+| `indexer` (on) | `indexer <id> reindexAll\|reindexList\|reindexRow`, `mview <id> update`. |
+| `cache` (on) | `cache flush\|clean` with the cache types, page cache clean. |
+| `queue` (on) | One root span per consumed message (`queue <topic>`), with consumer and outcome. |
+| `outbound` (on) | Guzzle calls as `HTTP <METHOD>`, with host and status; `traceparent` is sent along. |
+| `sql` (off) | Database queries: verb, bounded table, obfuscated text. |
+| `events` (off) | Dispatched Magento events (name only). |
+| `redis` (off) | Redis cache backend commands (command only). |
+| `eav`, `business` (off) | Reserved names. Upstream's entity, pricing, totals and repository hooks were not carried over. |
+
+Request spans carry: area, store and website code, `enduser.id` (customer id, or admin user id), customer group or admin
+role (`bode.magento.admin.role`), a keyed hash of the session id, `client.address`, the configured correlation headers,
+truncated user agent, status class and `error.type` for 5xx. Admin saves, deletes, cache flushes and logins are span
+events (`admin.audit`): who (id), entity type, action, never field values.
+
+## Never recorded
+
+Query strings and the raw URL (`url.path` exists only for REST, as the route template), request and response bodies,
+GraphQL queries and variables, resolver values, SQL literals and bind values, e-mail addresses, names, the raw session id,
+exception messages and traces (only the exception class), cache keys and tags, queue message bodies.
+
+## Configuration (environment variables)
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `MAGENTO_OTEL_ENABLED` | `true` | `false` switches everything off |
+| `MAGENTO_OTEL_TRACING_GROUPS` | `http,cron,cli,indexer,cache,queue,outbound` | Groups on. `all` enables every group, `-name` subtracts from the defaults, `http,sql` is an explicit list |
+| `MAGENTO_OTEL_EXCLUDED_PATHS` | `health_check.php,/health,/static/,/media/,cron.php,get.php` | Request path fragments that are never traced |
+| `MAGENTO_OTEL_SPAN_CAP` | `500` | Spans per request, cron job or queue message; the rest are counted as dropped, and the counter resets for the next unit of work |
+| `MAGENTO_OTEL_IP_MODE` | `truncate` | `full`, `truncate` (/24, /48), `hash`, `off` |
+| `MAGENTO_OTEL_USER_MODE` | `id` | `id`, `hash`, `off` (never e-mail or name) |
+| `MAGENTO_OTEL_HASH_SECRET` | none | Secret for the keyed hashes (session id, and IP/user in `hash` mode); without it they record nothing |
+| `MAGENTO_OTEL_CORRELATION_HEADERS` | none | Comma separated request headers recorded as `http.request.header.<name>` |
+| `MAGENTO_OTEL_FORWARDED_HEADER`, `MAGENTO_OTEL_TRUSTED_PROXIES` | none | Opt-in: take the client address from this header, but only when the direct peer is in the list (addresses or CIDR). Off by default: the address the web server already resolved (`REMOTE_ADDR`) is used |
+| `MAGENTO_OTEL_DEBUG` | unset | `true` writes swallowed instrumentation errors to the PHP error log |
+
+Sampling and the exporter use the standard `OTEL_*` variables (`OTEL_TRACES_SAMPLER`, `OTEL_EXPORTER_OTLP_*`, ...); the
+module has no sampler of its own. The admin area is resolved from Magento itself (the area code), never from a constant.
+
+### Privacy
+
+`MAGENTO_OTEL_IP_MODE=full` and `MAGENTO_OTEL_USER_MODE=id` send personal data to your telemetry backend. The module
+defaults are conservative (`truncate`, `id`); choosing `full` is a decision about region, retention and a data
+processing agreement that belongs to the operator, not to this module.
+
+## Log correlation
+
+A Monolog processor, registered in `etc/di.xml` on `Magento\Framework\Logger\Monolog`, adds `trace_id`, `span_id` and
+`trace_flags` to the record's `extra`. In Magento's default line format they end the line:
+
+```
+[2026-11-04T13:45:23.967357+00:00] main.ERROR: payment declined {"order":"x"} {"trace_id":"0af7...","span_id":"26...","trace_flags":"01"}
+```
+
+Records written outside a span get no ids. To ship the lines to Loki and keep multi-line stack traces as one entry, see
+the Alloy pipeline of the project that uses this module; a derived field with the regex `"trace_id":"([0-9a-f]{32})"`
+links a line to its trace in Grafana.
+
+## How it works (for contributors)
+
+- `Hook\Runtime` boots once per process from `registration.php`, builds the `Instrumenter`, and registers every
+  `Instrumentation\*` class. `Hook\HookRegistrarInterface` wraps `OpenTelemetry\Instrumentation\hook()`, so everything
+  above it is unit-tested without the extension (`Test/Unit/Hook`).
+- `Instrumenter::span()` is the only place that turns "start a span before, end it after" into hooks. It applies the
+  group switch and the per-unit `SpanBudget`, keeps pre and post balanced with a `SpanStack` (a post hook never ends a
+  span that is not its own), and catches, counts and swallows every failure (`ErrorCounter`, visible as
+  `bode.telemetry.errors` in `Bode_Metrics`, logged with `MAGENTO_OTEL_DEBUG=true`).
+- Code that needs dependency injection (sessions, store, admin user) cannot live in a static hook: the
+  `Plugin\EnrichRequestSpan` after-plugin and the `Observer\AdminAudit` observer reach the current span through
+  `Api\TelemetryStateInterface`.
+- Hook targets are Magento internals (for example `Consumer::dispatchMessage`, `ProcessCronQueueObserver::tryRunJob`). A
+  Magento upgrade can rename one; a hook on a missing method does nothing. Check after upgrades.
+
+## Tests
+
+`composer test` in the monorepo root (also run in CI: the unit tests need no Magento). `harness/` in the monorepo
+runs every scenario end to end with the real extension against Tempo.

@@ -1,0 +1,51 @@
+name: Split
+
+# Packagist needs one composer.json at the root of a repository, so each package is published from a read-only split
+# repository that mirrors its packages/<name> directory: main on every push to main, and every v* tag as the same tag.
+# Both packages are released together (the metrics package requires self.version of the tracing one).
+#
+# One-time setup (docs/releasing.md): create the two empty split repositories, add the secret SPLIT_TOKEN (a fine-grained
+# token with contents:write on exactly those two repositories), set the variable SPLIT_ENABLED to true, and submit both
+# split repositories to Packagist.
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  split:
+    name: Split / ${{ matrix.package.name }}
+    runs-on: ubuntu-latest
+    if: vars.SPLIT_ENABLED == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - { name: tracing, repo: ofabric-io/bode-module-tracing }
+          - { name: metrics, repo: ofabric-io/bode-module-metrics }
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Split packages/${{ matrix.package.name }} into ${{ matrix.package.repo }}
+        env:
+          TOKEN: ${{ secrets.SPLIT_TOKEN }}
+          REF_NAME: ${{ github.ref_name }}
+          IS_TAG: ${{ github.ref_type == 'tag' }}
+          PREFIX: packages/${{ matrix.package.name }}
+          REPO: ${{ matrix.package.repo }}
+        run: |
+          set -euo pipefail
+          # git subtree split keeps only the commits that touch the package. It is deterministic, so repeated runs
+          # produce the same commits and the push is a fast-forward.
+          sha="$(git subtree split --prefix="$PREFIX" HEAD)"
+          remote="https://x-access-token:${TOKEN}@github.com/${REPO}.git"
+          if [ "$IS_TAG" = "true" ]; then
+            git push "$remote" "$sha:refs/tags/$REF_NAME"
+          else
+            git push "$remote" "$sha:refs/heads/main"
+          fi
