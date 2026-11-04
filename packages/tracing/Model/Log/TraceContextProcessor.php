@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Bode\Tracing\Model\Log;
 
+use Bode\Tracing\Api\TraceContextProviderInterface;
+use Bode\Tracing\Model\TraceContextProvider;
+
 /**
  * Monolog processor adding trace_id, span_id and trace_flags to the "extra" of every log record, so a log line can be
  * found from its trace and the other way round. Does nothing when no valid span is current (no extension, no
@@ -14,6 +17,19 @@ namespace Bode\Tracing\Model\Log;
  */
 class TraceContextProcessor
 {
+    /**
+     * @var TraceContextProviderInterface
+     */
+    private readonly TraceContextProviderInterface $provider;
+
+    /**
+     * @param TraceContextProviderInterface|null $provider null reads the current OpenTelemetry span
+     */
+    public function __construct(?TraceContextProviderInterface $provider = null)
+    {
+        $this->provider = $provider ?? new TraceContextProvider();
+    }
+
     /**
      * Adds the trace context to a log record.
      *
@@ -46,18 +62,6 @@ class TraceContextProcessor
      */
     protected function traceContext(): ?array
     {
-        if (!class_exists(\OpenTelemetry\API\Trace\Span::class)) {
-            return null;
-        }
-        $context = \OpenTelemetry\API\Trace\Span::getCurrent()->getContext();
-        if (!$context->isValid()) {
-            return null;
-        }
-
-        return [
-            'trace_id' => $context->getTraceId(),
-            'span_id' => $context->getSpanId(),
-            'trace_flags' => $context->isSampled() ? '01' : '00',
-        ];
+        return $this->provider->current();
     }
 }

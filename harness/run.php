@@ -183,6 +183,12 @@ switch ($scenario) {
         });
         $logger->info('after the request, no span is current');
         break;
+    case 'log-json':
+    case 'log-json-web':
+    case 'log-uncaught':
+        // Bode_Logs: the real classes wired like di.xml does it, see logs.php.
+        require __DIR__ . '/logs.php';
+        break;
     case 'log':
         $logger = new Monolog\Logger('main');
         $handler = new Monolog\Handler\StreamHandler('php://stdout');

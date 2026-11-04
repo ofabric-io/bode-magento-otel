@@ -27,6 +27,7 @@ class PackagesTest extends TestCase
     private const PACKAGES = [
         'tracing' => ['bode/module-tracing', 'Bode_Tracing', 'Bode\\Tracing\\'],
         'metrics' => ['bode/module-metrics', 'Bode_Metrics', 'Bode\\Metrics\\'],
+        'logs' => ['bode/module-logs', 'Bode_Logs', 'Bode\\Logs\\'],
     ];
 
     public function testPackagesNeverMentionAShop(): void
@@ -46,7 +47,8 @@ class PackagesTest extends TestCase
 
     public function testPackagesDependOnlyOnMagentoOpenTelemetryPsrAndEachOther(): void
     {
-        $allowed = '/^(php|ext-[a-z]+|magento\/[a-z0-9-]+|open-telemetry\/[a-z-]+|psr\/[a-z-]+|bode\/[a-z-]+)$/';
+        $allowed = '/^(php|ext-[a-z]+|magento\/[a-z0-9-]+|monolog\/[a-z-]+|open-telemetry\/[a-z-]+'
+            . '|psr\/[a-z-]+|bode\/[a-z-]+)$/';
         $violations = [];
         foreach (array_keys(self::PACKAGES) as $dir) {
             $composer = $this->composer($dir);
@@ -108,11 +110,17 @@ class PackagesTest extends TestCase
         self::assertSame([], array_values(array_filter($problems)));
     }
 
-    public function testMetricsFollowsTracingInLockstep(): void
+    public function testDependentPackagesFollowTracingInLockstep(): void
     {
-        $require = $this->composer('metrics')['require'];
+        foreach (['metrics', 'logs'] as $dir) {
+            $require = $this->composer($dir)['require'];
 
-        self::assertSame('self.version', $require['bode/module-tracing'] ?? null, 'Packages are released together');
+            self::assertSame(
+                'self.version',
+                $require['bode/module-tracing'] ?? null,
+                "$dir: packages are released together"
+            );
+        }
     }
 
     private function root(): string

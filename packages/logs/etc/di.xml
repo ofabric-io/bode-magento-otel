@@ -1,0 +1,66 @@
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:framework:ObjectManager/etc/config.xsd">
+    <!-- Area and route come from Magento, behind Proxies: the logger is built before the application, and
+         logging has to keep working in the middle of a bootstrap failure. -->
+    <preference for="Bode\Logs\Model\RequestProviderInterface" type="Bode\Logs\Model\MagentoRequestProvider"/>
+    <type name="Bode\Logs\Model\MagentoRequestProvider">
+        <arguments>
+            <argument name="state" xsi:type="object">Magento\Framework\App\State\Proxy</argument>
+            <argument name="request" xsi:type="object">Magento\Framework\App\RequestInterface\Proxy</argument>
+        </arguments>
+    </type>
+
+    <!-- Read from the real process: $_SERVER, argv and PHP_SAPI. -->
+    <type name="Bode\Logs\Model\ExecutionContext">
+        <arguments>
+            <argument name="server" xsi:type="null"/>
+            <argument name="argv" xsi:type="null"/>
+            <argument name="sapi" xsi:type="null"/>
+        </arguments>
+    </type>
+
+    <!-- The structured part of every record is assembled once, inside the logger call. -->
+    <type name="Magento\Framework\Logger\Monolog">
+        <arguments>
+            <argument name="processors" xsi:type="array">
+                <item name="bode_structured_context" xsi:type="object">
+                    Bode\Logs\Model\Processor\StructuredContextProcessor
+                </item>
+            </argument>
+            <!-- stdout and stderr for containers: silent unless MAGENTO_OTEL_LOGS_OUTPUT names them. -->
+            <argument name="handlers" xsi:type="array">
+                <item name="bode_stdout" xsi:type="object">Bode\Logs\Model\Handler\Stdout</item>
+                <item name="bode_stderr" xsi:type="object">Bode\Logs\Model\Handler\Stderr</item>
+            </argument>
+        </arguments>
+    </type>
+    <virtualType name="Bode\Logs\Model\Handler\Stdout" type="Bode\Logs\Model\Handler\StreamJsonHandler">
+        <arguments>
+            <argument name="stream" xsi:type="string">php://stdout</argument>
+        </arguments>
+    </virtualType>
+    <virtualType name="Bode\Logs\Model\Handler\Stderr" type="Bode\Logs\Model\Handler\StreamJsonHandler">
+        <arguments>
+            <argument name="stream" xsi:type="string">php://stderr</argument>
+        </arguments>
+    </virtualType>
+
+    <!-- Exceptions passed as the message (Magento's $logger->critical($e)) become structured exception data. -->
+    <type name="Magento\Framework\Logger\Monolog">
+        <plugin name="bode_logs_throwable_as_message" type="Bode\Logs\Plugin\ThrowableAsMessage"/>
+    </type>
+
+    <!-- One formatter for every file handler of Magento and of other modules: they all extend Handler\Base. -->
+    <type name="Magento\Framework\Logger\Handler\Base">
+        <plugin name="bode_logs_json_formatter" type="Bode\Logs\Plugin\JsonFormatterForAllHandlers"/>
+    </type>
+
+    <!-- Which cron job is running. -->
+    <type name="Magento\Cron\Model\Schedule">
+        <plugin name="bode_logs_cron_job" type="Bode\Logs\Plugin\CronJobContext"/>
+    </type>
+    <type name="Magento\Cron\Observer\ProcessCronQueueObserver">
+        <plugin name="bode_logs_cron_job" type="Bode\Logs\Plugin\CronJobContext"/>
+    </type>
+</config>

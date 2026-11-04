@@ -20,6 +20,7 @@
     ],
     "require": {
         "php": ">=8.5",
+        "bode/module-logs": "dev-main",
         "bode/module-metrics": "dev-main",
         "bode/module-tracing": "dev-main"
     },
@@ -57,6 +58,7 @@
         ],
         "lint:packages": [
             "@composer validate --strict --no-check-publish --working-dir=packages/tracing",
+            "@composer validate --strict --no-check-publish --working-dir=packages/logs",
             "@composer validate --strict --no-check-publish --working-dir=packages/metrics"
         ],
         "analyse": "tools/phpstan/vendor/bin/phpstan analyse --memory-limit=1G --no-progress",
@@ -70,7 +72,7 @@
     "scripts-descriptions": {
         "lint": "Composer manifests and coding standard (phpcs, Magento2 + PHPCompatibility)",
         "analyse": "Static analysis (PHPStan level 5 with the Magento extension)",
-        "test": "Unit tests of both packages and the repository conventions",
+        "test": "Unit tests of all packages and the repository conventions",
         "verify": "Everything CI runs: lint, analyse, test"
     },
     "minimum-stability": "dev",
