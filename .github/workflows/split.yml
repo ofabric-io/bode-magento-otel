@@ -32,6 +32,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          persist-credentials: false
       - name: Split packages/${{ matrix.package.name }} into ${{ matrix.package.repo }}
         env:
           TOKEN: ${{ secrets.SPLIT_TOKEN }}

@@ -14,7 +14,7 @@
 
     <rule ref="Magento2"/>
 
-    <!-- Minimum supported PHP up to the highest Magento 2.4.9 supports -->
-    <config name="testVersion" value="8.3-"/>
+    <!-- Minimum supported PHP (Magento 2.4.9 supports 8.5) -->
+    <config name="testVersion" value="8.5-"/>
     <rule ref="PHPCompatibility"/>
 </ruleset>

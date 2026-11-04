@@ -3,7 +3,7 @@
     "description": "Local harness that runs the Bode modules against stub Magento classes and a real OpenTelemetry SDK",
     "type": "project",
     "require": {
-        "php": ">=8.3",
+        "php": ">=8.5",
         "open-telemetry/api": "^1.4",
         "open-telemetry/sdk": "^1.4",
         "open-telemetry/exporter-otlp": "^1.3",

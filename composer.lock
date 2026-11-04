@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "305e24eb873d41e2145507dcbc7b8215",
+    "content-hash": "841f4f90c80d6bc2d02daad810808c16",
     "packages": [
         {
             "name": "aws/aws-crt-php",
@@ -163,13 +163,13 @@
             "dist": {
                 "type": "path",
                 "url": "packages/metrics",
-                "reference": "866ef11668ddc720a72905d99747edaf75bf70f2"
+                "reference": "6add78e6585f2d6f20887a0ecd1e6951df23553c"
             },
             "require": {
                 "bode/module-tracing": "self.version",
                 "magento/framework": "^103.0",
                 "magento/module-cron": "^100.4",
-                "php": ">=8.3"
+                "php": ">=8.5"
             },
             "suggest": {
                 "ext-opentelemetry": "Required at runtime for the hooks that time requests, jobs and calls",
@@ -183,12 +183,27 @@
                 ],
                 "psr-4": {
                     "Bode\\Metrics\\": ""
-                }
+                },
+                "exclude-from-classmap": [
+                    "/Test/"
+                ]
             },
             "license": [
                 "proprietary"
             ],
             "description": "OpenTelemetry metrics for Magento 2 with a hard low-cardinality contract: HTTP, cron, indexers, queues, cache, outbound HTTP and a state collector. A no-op without ext-opentelemetry.",
+            "homepage": "https://github.com/ofabric-io/bode-magento-otel",
+            "keywords": [
+                "magento2",
+                "metrics",
+                "observability",
+                "opentelemetry",
+                "otel"
+            ],
+            "support": {
+                "issues": "https://github.com/ofabric-io/bode-magento-otel/issues",
+                "source": "https://github.com/ofabric-io/bode-magento-otel"
+            },
             "transport-options": {
                 "symlink": true,
                 "relative": true
@@ -200,11 +215,11 @@
             "dist": {
                 "type": "path",
                 "url": "packages/tracing",
-                "reference": "f108f82fb5c1f5e49a72c460aac42a6eaf8d7918"
+                "reference": "6ab82634ea506f2f3a7b9fc2daedd78502ec787a"
             },
             "require": {
                 "magento/framework": "^103.0",
-                "php": ">=8.3",
+                "php": ">=8.5",
                 "psr/log": "^1.1 || ^2.0 || ^3.0"
             },
             "suggest": {
@@ -222,12 +237,27 @@
                 ],
                 "psr-4": {
                     "Bode\\Tracing\\": ""
-                }
+                },
+                "exclude-from-classmap": [
+                    "/Test/"
+                ]
             },
             "license": [
                 "proprietary"
             ],
             "description": "OpenTelemetry traces for Magento 2: HTTP, cron, CLI, indexers, cache, queues, outbound HTTP. Vendor-neutral, a no-op without ext-opentelemetry.",
+            "homepage": "https://github.com/ofabric-io/bode-magento-otel",
+            "keywords": [
+                "magento2",
+                "observability",
+                "opentelemetry",
+                "otel",
+                "tracing"
+            ],
+            "support": {
+                "issues": "https://github.com/ofabric-io/bode-magento-otel/issues",
+                "source": "https://github.com/ofabric-io/bode-magento-otel"
+            },
             "transport-options": {
                 "symlink": true,
                 "relative": true
@@ -11664,8 +11694,11 @@
     "prefer-stable": true,
     "prefer-lowest": false,
     "platform": {
-        "php": ">=8.3"
+        "php": ">=8.5"
     },
     "platform-dev": {},
+    "platform-overrides": {
+        "php": "8.5.0"
+    },
     "plugin-api-version": "2.9.0"
 }

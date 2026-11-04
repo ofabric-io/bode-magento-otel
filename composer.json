@@ -19,7 +19,7 @@
         }
     ],
     "require": {
-        "php": ">=8.3",
+        "php": ">=8.5",
         "bode/module-metrics": "dev-main",
         "bode/module-tracing": "dev-main"
     },
@@ -40,6 +40,9 @@
     "config": {
         "sort-packages": true,
         "preferred-install": "dist",
+        "platform": {
+            "php": "8.5.0"
+        },
         "allow-plugins": {
             "magento/composer-dependency-version-audit-plugin": false,
             "magento/magento-composer-installer": false,

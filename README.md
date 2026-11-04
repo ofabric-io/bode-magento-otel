@@ -38,7 +38,7 @@ Only Docker is needed. `bin/dev` runs a command in an image with PHP 8.5, the ex
 
 ```bash
 bin/install                    # composer install for the root and both tool trees
-bin/dev composer lint          # composer manifests + phpcs (Magento2 standard, PHPCompatibility 8.3+)
+bin/dev composer lint          # composer manifests + phpcs (Magento2 standard, PHPCompatibility 8.5)
 bin/dev composer analyse       # PHPStan level 5 with the Magento extension
 bin/dev composer test          # unit tests of both packages + repository conventions
 bin/dev composer verify        # all of the above
@@ -47,7 +47,7 @@ harness/run.sh up && harness/run.sh scenarios   # real telemetry into a local Gr
 ```
 
 Magento's framework comes from the public [Mage-OS mirror](https://mirror.mage-os.org/), so no Magento licence keys are
-needed anywhere. CI (`.github/workflows/ci.yml`) runs the same commands, with the unit tests on PHP 8.3, 8.4 and 8.5.
+needed anywhere. CI (`.github/workflows/ci.yml`) runs the same commands, on PHP 8.5.
 
 Unit tests of the packages use no Magento classes. What needs a full Magento (compiled DI, a real request) belongs to
 the project that installs the packages.

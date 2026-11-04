@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "4c86699b75087937f88f38fce60af4e3",
+    "content-hash": "e25013ceeb44fd7d44c37cd1dc441c25",
     "packages": [
         {
             "name": "bitexpert/phpstan-magento",
@@ -396,5 +396,8 @@
     "prefer-lowest": false,
     "platform": {},
     "platform-dev": {},
+    "platform-overrides": {
+        "php": "8.5.0"
+    },
     "plugin-api-version": "2.9.0"
 }

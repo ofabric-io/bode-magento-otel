@@ -24,7 +24,7 @@ bin/magento setup:upgrade
 
 ## Requirements
 
-- PHP 8.3 or newer, Magento 2.4.x.
+- PHP 8.5 or newer, Magento 2.4.x.
 - To record anything: `ext-opentelemetry` (PECL `opentelemetry`) and `open-telemetry/sdk`, `exporter-otlp`, `sem-conv`;
   `ext-protobuf` is recommended for OTLP over http/protobuf. Without them the module registers nothing.
 - Hooks are registered when Composer loads `registration.php`, i.e. on every PHP process, before Magento runs. That works
