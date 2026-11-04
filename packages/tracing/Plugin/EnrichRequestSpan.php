@@ -6,6 +6,9 @@ namespace Bode\Tracing\Plugin;
 
 use Bode\Tracing\Api\PrivacyInterface;
 use Bode\Tracing\Api\TelemetryStateInterface;
+use Magento\Backend\Model\Auth\Session as AdminSession;
+use Magento\Customer\Api\GroupRepositoryInterface;
+use Magento\Customer\Model\Session as CustomerSession;
 use Magento\Framework\App\FrontControllerInterface;
 use Magento\Framework\App\RequestInterface;
 use Magento\Framework\App\State;
@@ -26,18 +29,18 @@ class EnrichRequestSpan
      * @param PrivacyInterface $privacy
      * @param StoreManagerInterface $storeManager
      * @param State $state
-     * @param object $customerSession Magento\Customer\Model\Session (proxy)
-     * @param object $adminSession Magento\Backend\Model\Auth\Session (proxy)
-     * @param object $groupRepository Magento\Customer\Api\GroupRepositoryInterface (proxy)
+     * @param CustomerSession $customerSession injected as its proxy (etc/di.xml)
+     * @param AdminSession $adminSession injected as its proxy (etc/di.xml)
+     * @param GroupRepositoryInterface $groupRepository injected as its proxy (etc/di.xml)
      */
     public function __construct(
         private readonly TelemetryStateInterface $telemetry,
         private readonly PrivacyInterface $privacy,
         private readonly StoreManagerInterface $storeManager,
         private readonly State $state,
-        private readonly object $customerSession,
-        private readonly object $adminSession,
-        private readonly object $groupRepository
+        private readonly CustomerSession $customerSession,
+        private readonly AdminSession $adminSession,
+        private readonly GroupRepositoryInterface $groupRepository
     ) {
     }
 

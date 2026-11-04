@@ -6,6 +6,7 @@ namespace Bode\Tracing\Observer;
 
 use Bode\Tracing\Api\PrivacyInterface;
 use Bode\Tracing\Api\TelemetryStateInterface;
+use Magento\Backend\Model\Auth\Session as AdminSession;
 use Magento\Framework\Event\Observer;
 use Magento\Framework\Event\ObserverInterface;
 use Throwable;
@@ -33,12 +34,12 @@ class AdminAudit implements ObserverInterface
     /**
      * @param TelemetryStateInterface $telemetry
      * @param PrivacyInterface $privacy
-     * @param object $adminSession Magento\Backend\Model\Auth\Session (proxy)
+     * @param AdminSession $adminSession injected as its proxy (etc/di.xml)
      */
     public function __construct(
         private readonly TelemetryStateInterface $telemetry,
         private readonly PrivacyInterface $privacy,
-        private readonly object $adminSession
+        private readonly AdminSession $adminSession
     ) {
     }
 

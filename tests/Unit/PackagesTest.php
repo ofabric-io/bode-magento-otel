@@ -123,6 +123,33 @@ class PackagesTest extends TestCase
         }
     }
 
+    /**
+     * Magento's compiled dependency injection cannot resolve a constructor parameter typed as the bare `object` type:
+     * it hands the class the raw configuration array and the class fails with a TypeError when it is first created
+     * (setup:di:compile succeeds, so only production notices). Type the parameter with the class or interface and let
+     * etc/di.xml inject a Proxy instead.
+     */
+    public function testNoConstructorTakesABareObject(): void
+    {
+        $violations = [];
+        foreach ($this->files() as $file) {
+            if (!str_ends_with($file, '.php') || str_contains($file, '/Test/')) {
+                continue;
+            }
+            $source = (string) file_get_contents($file);
+            if (preg_match_all('/function __construct\((.*?)\)\s*\{/s', $source, $constructors) < 1) {
+                continue;
+            }
+            foreach ($constructors[1] as $parameters) {
+                if (preg_match('/(?<![\w\\\\])object\s+\$\w+/', $parameters, $match) === 1) {
+                    $violations[] = substr($file, strlen($this->root()) + 1) . ': ' . $match[0];
+                }
+            }
+        }
+
+        self::assertSame([], $violations, 'Type the parameter with a class or interface; inject a Proxy in di.xml');
+    }
+
     private function root(): string
     {
         return str_replace(DIRECTORY_SEPARATOR, '/', dirname(__DIR__, 2));
