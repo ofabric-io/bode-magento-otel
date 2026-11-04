@@ -9,6 +9,8 @@ use Magento\Webapi\Controller\Rest\Router;
 use Magento\Framework\App\State;
 use Magento\Framework\App\Bootstrap;
 use Magento\Framework\App\FrontController;
+use Magento\Framework\App\PageCache\Kernel;
+use Bode\Tracing\Api\RouteNormalizerInterface;
 use Bode\Tracing\Hook\Runtime;
 use Bode\Tracing\Hook\SpanHandleInterface;
 use Bode\Tracing\Model\ClientAddressResolver;
@@ -32,6 +34,7 @@ class HttpInstrumentation implements InstrumentationInterface
     private const STATE = State::class;
     private const REST_ROUTER = Router::class;
     private const GRAPHQL = GraphQl::class;
+    private const PAGE_CACHE = Kernel::class;
     private const CORRELATION_VALUE_MAX = 128;
 
     /**
@@ -80,7 +83,25 @@ class HttpInstrumentation implements InstrumentationInterface
                     (string) $request->getControllerName(),
                     (string) $request->getActionName()
                 );
-                $this->setRoute($root, $request, $route);
+                // Nothing was routed (a cache hit, a redirect): keep the name the request already has.
+                if ($route !== 'unknown') {
+                    $this->setRoute($root, $request, $route);
+                }
+            },
+            true
+        );
+
+        // The built-in full page cache answers before the router runs, so a cached storefront page has no action
+        // name. Without this, most storefront traffic would be named "GET unknown".
+        $instrumenter->after(
+            'http',
+            self::PAGE_CACHE,
+            'load',
+            function (SpanHandleInterface $root, ?object $subject, array $params, mixed $response): void {
+                if (is_object($response)) {
+                    $root->setAttribute('bode.magento.page_cache', 'hit');
+                    $this->setRoute($root, null, RouteNormalizerInterface::PAGE_CACHE_HIT);
+                }
             },
             true
         );
@@ -130,8 +151,11 @@ class HttpInstrumentation implements InstrumentationInterface
         }
 
         $method = strtoupper(preg_replace('/[^A-Za-z]/', '', (string) ($server['REQUEST_METHOD'] ?? 'GET')) ?? 'GET');
+        // Until a route is known (router, REST, GraphQL, or a page cache hit) the request is "unknown": a redirect or a
+        // request that never reaches routing stays that way.
         $attributes = [
             'http.request.method' => $method,
+            'http.route' => 'unknown',
             'url.scheme' => (!empty($server['HTTPS']) && $server['HTTPS'] !== 'off') ? 'https' : 'http',
             'user_agent.original' => $runtime->privacy->userAgent((string) ($server['HTTP_USER_AGENT'] ?? '')),
         ];
@@ -149,7 +173,7 @@ class HttpInstrumentation implements InstrumentationInterface
         }
 
         return $runtime->spans->start(
-            $method,
+            $method . ' unknown',
             SpanKind::KIND_SERVER,
             $attributes,
             TraceContextPropagator::getInstance()->extract($this->propagationHeaders($server))
@@ -197,7 +221,7 @@ class HttpInstrumentation implements InstrumentationInterface
     {
         $method = $request !== null && method_exists($request, 'getMethod')
             ? strtoupper((string) $request->getMethod())
-            : '';
+            : strtoupper(preg_replace('/[^A-Za-z]/', '', (string) ($_SERVER['REQUEST_METHOD'] ?? 'GET')) ?? 'GET');
         $root->setAttribute('http.route', $route);
         $root->setName(trim($method . ' ' . $route));
     }

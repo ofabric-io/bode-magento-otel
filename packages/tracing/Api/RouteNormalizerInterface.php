@@ -12,6 +12,11 @@ namespace Bode\Tracing\Api;
 interface RouteNormalizerInterface
 {
     /**
+     * Route of a page that the built-in full page cache served: it answers before routing, so there is no action name.
+     */
+    public const PAGE_CACHE_HIT = 'page_cache_hit';
+
+    /**
      * Path without query string, fragment or scheme/host.
      *
      * @param string $uri a request URI or URL

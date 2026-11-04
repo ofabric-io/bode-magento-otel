@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace Bode\Metrics\Instrumentation;
 
 use Bode\Metrics\Hook\MetricsContext;
+use Bode\Tracing\Api\RouteNormalizerInterface;
 use Magento\Framework\App\Bootstrap;
 use Magento\Framework\App\FrontController;
+use Magento\Framework\App\PageCache\Kernel;
 use Magento\Framework\App\State;
 use Magento\GraphQl\Controller\GraphQl;
 use Magento\Webapi\Controller\Rest\Router;
@@ -77,12 +79,29 @@ class HttpMetrics implements InstrumentationInterface
             function (?object $s, array $params) use ($context): void {
                 $request = $params[0] ?? null;
                 if (is_object($request) && method_exists($request, 'getRouteName')) {
-                    $this->route = $context->routes->fullActionName(
+                    $route = $context->routes->fullActionName(
                         (string) $request->getRouteName(),
                         (string) $request->getControllerName(),
                         (string) $request->getActionName()
                     );
+                    // Nothing was routed (a cache hit, a redirect): keep the route the request already has.
+                    if ($route !== 'unknown') {
+                        $this->route = $route;
+                    }
                     $this->method = $this->methodOf($request);
+                }
+            }
+        );
+
+        // The built-in full page cache answers before the router runs, so a cached storefront page has no action
+        // name: label it explicitly instead of "unknown" (the same value as the trace's http.route).
+        $context->after(
+            'http',
+            Kernel::class,
+            'load',
+            function (?object $s, array $params, mixed $response): void {
+                if (is_object($response)) {
+                    $this->route = RouteNormalizerInterface::PAGE_CACHE_HIT;
                 }
             }
         );
