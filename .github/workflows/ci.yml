@@ -30,6 +30,22 @@ jobs:
       pull-requests: read
     steps:
       - uses: amannn/action-semantic-pull-request@v5
+        with:
+          # The title becomes the squash commit, and the commit decides the version (docs/releasing.md).
+          types: |
+            feat
+            fix
+            perf
+            revert
+            docs
+            refactor
+            test
+            build
+            ci
+            chore
+          requireScope: false
+          subjectPattern: ^(?![A-Z]).+$
+          subjectPatternError: 'The subject must start with a lowercase letter, for example "fix: handle an empty route".'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -117,3 +133,37 @@ jobs:
           extensions: ${{ env.PHP_EXTENSIONS }}
           tools: composer:v2
       - run: bin/verify-install
+
+  release:
+    name: Release / semantic version from Conventional Commits
+    # Every merge to main that carries a releasable commit (feat, fix, perf, revert, or a breaking change) becomes a
+    # release: semantic-release computes the next version, tags it vX.Y.Z and creates the GitHub release. The tag is
+    # then split into both package repositories. Nothing releasable (docs, ci, chore, ...) means no release.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [lint, analyse, test, install]
+    runs-on: ubuntu-latest
+    concurrency:
+      group: release
+      cancel-in-progress: false
+    permissions:
+      contents: write
+      actions: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: cycjimmy/semantic-release-action@v4
+        id: release
+        with:
+          semantic_version: 24
+          extra_plugins: |
+            conventional-changelog-conventionalcommits@8
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # Tags pushed with GITHUB_TOKEN do not trigger other workflows, so the split is started explicitly.
+      - name: Split the new tag into the package repositories
+        if: steps.release.outputs.new_release_published == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.release.outputs.new_release_git_tag }}
+        run: gh workflow run split.yml --ref "$TAG"
