@@ -37,6 +37,25 @@ MAGENTO_MOUNT=${MAGENTO_MOUNT:-bode-e2e-magento}
 # actions/cache can key it by hash (Magento version, PHP/extension versions, packages/*/composer.json content).
 COMPOSER_CACHE_MOUNT=${COMPOSER_CACHE_MOUNT:-bode-e2e-composer-cache}
 
+# Bounded, not `until ... do sleep ...; done` forever: a genuinely broken service (a crash-looping container, a bad
+# image) must fail with a clear message within a couple of minutes, not hang the whole job until a CI-level timeout
+# eventually kills it with no indication of which service never came up. Top-level, not inside one `case` branch:
+# `up` and `web-up` are separate invocations of this script (separate processes), so a function defined inside one
+# case branch would not exist for another.
+wait_ready() { # wait_ready <label> <max_attempts> <sleep_seconds> <check command...>
+  local label="$1" max="$2" delay="$3"
+  shift 3
+  local attempt=0
+  until "$@" >/dev/null 2>&1; do
+    attempt=$((attempt + 1))
+    if [ "$attempt" -ge "$max" ]; then
+      echo "$label did not become ready after $((max * delay))s" >&2
+      return 1
+    fi
+    sleep "$delay"
+  done
+}
+
 case "${1:-}" in
   up)
     docker network inspect "$NET" >/dev/null 2>&1 || docker network create "$NET" >/dev/null
@@ -49,19 +68,23 @@ case "${1:-}" in
     docker run -d --name "$DB" --network "$NET" \
       -e MARIADB_DATABASE=magento -e MARIADB_USER=magento -e MARIADB_PASSWORD=magento \
       -e MARIADB_ROOT_PASSWORD=root "$MARIADB_IMAGE" >/dev/null
+    # No bootstrap.memory_lock: it requires `docker run --ulimit memlock=-1:-1` to actually succeed, which this
+    # never set - OpenSearch's bootstrap checks can then fail and crash-loop on hosts where memory locking isn't
+    # otherwise available (observed: the readiness wait below hung for 15+ minutes in CI before this was removed).
+    # Not needed for a disposable single-node e2e search index anyway.
     docker run -d --name "$SEARCH" --network "$NET" \
       -e discovery.type=single-node -e plugins.security.disabled=true -e DISABLE_INSTALL_DEMO_CONFIG=true \
-      -e bootstrap.memory_lock=true -e OPENSEARCH_JAVA_OPTS="-Xms512m -Xmx512m" "$OPENSEARCH_IMAGE" >/dev/null
+      -e OPENSEARCH_JAVA_OPTS="-Xms512m -Xmx512m" "$OPENSEARCH_IMAGE" >/dev/null
     docker run -d --name "$COLLECTOR" --network "$NET" \
       -v "$PWD/e2e/collector/config.yaml:/etc/otelcol-contrib/config.yaml:ro" -v "$OUTPUT_DIR:/output" \
       "$OTEL_COLLECTOR_IMAGE" >/dev/null
 
     echo "waiting for MariaDB, OpenSearch, the Collector..."
-    until docker exec "$DB" healthcheck.sh --connect --innodb_initialized >/dev/null 2>&1; do sleep 2; done
-    until docker run --rm --network "$NET" "$IMAGE" php -r 'exit(@file_get_contents("http://'"$SEARCH"':9200") ? 0 : 1);' \
-      >/dev/null 2>&1; do sleep 2; done
-    until docker run --rm --network "$NET" "$IMAGE" php -r 'exit(@fsockopen("'"$COLLECTOR"'", 4318) ? 0 : 1);' \
-      >/dev/null 2>&1; do sleep 1; done
+    wait_ready "MariaDB" 60 2 docker exec "$DB" healthcheck.sh --connect --innodb_initialized
+    wait_ready "OpenSearch" 60 2 docker run --rm --network "$NET" "$IMAGE" \
+      php -r 'exit(@file_get_contents("http://'"$SEARCH"':9200") ? 0 : 1);'
+    wait_ready "the Collector" 30 1 docker run --rm --network "$NET" "$IMAGE" \
+      php -r 'exit(@fsockopen("'"$COLLECTOR"'", 4318) ? 0 : 1);'
     echo "ready"
     ;;
   install)
@@ -83,8 +106,8 @@ case "${1:-}" in
       -e MAGENTO_OTEL_IP_MODE=full -e MAGENTO_OTEL_CORRELATION_HEADERS=X-E2E-Run \
       -e MAGENTO_OTEL_LOGS_OUTPUT=file,stdout -e MAGENTO_OTEL_LOGS_ENABLED=true \
       "$IMAGE" php -S 0.0.0.0:8000 phpserver/router.php >/dev/null
-    until docker run --rm --network "$NET" "$IMAGE" php -r 'exit(@fsockopen("'"$WEB"'", 8000) ? 0 : 1);' \
-      >/dev/null 2>&1; do sleep 1; done
+    wait_ready "the web server" 30 1 docker run --rm --network "$NET" "$IMAGE" \
+      php -r 'exit(@fsockopen("'"$WEB"'", 8000) ? 0 : 1);'
     ;;
   web-down)
     docker rm -f "$WEB" >/dev/null 2>&1 || true

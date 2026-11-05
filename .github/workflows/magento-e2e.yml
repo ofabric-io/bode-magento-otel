@@ -53,6 +53,12 @@ jobs:
   e2e:
     name: Magento E2E / real Magento, compiled DI, real telemetry
     runs-on: ubuntu-latest
+    # Defense in depth against e2e/run.sh itself hanging (e.g. a readiness wait that never times out): a 45-minute
+    # budget comfortably covers even a cold run (~25 min estimated) without leaving a broken job to burn the
+    # default 6-hour GitHub Actions timeout before anyone notices. e2e/run.sh's own wait_ready() helper is the
+    # primary defense (bounded retries with a clear error message); this is the backstop if something new hangs in
+    # a way that helper does not cover.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 
