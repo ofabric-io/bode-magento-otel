@@ -18,7 +18,19 @@ use Bode\Tracing\Api\InstrumentationGuardInterface;
 class Config implements InstrumentationGuardInterface
 {
     public const DEFAULT_GROUPS = ['http', 'cron', 'cli', 'indexer', 'cache', 'queue', 'outbound'];
-    public const OPT_IN_GROUPS = ['events', 'sql', 'eav', 'redis', 'business'];
+    public const OPT_IN_GROUPS = ['events', 'sql', 'entities', 'redis'];
+
+    /**
+     * Alias => groups. `eav` and `business` are deprecated names of `entities`; `data` is the composite for the
+     * data layer.
+     *
+     * @var array<string,string[]>
+     */
+    public const GROUP_ALIASES = [
+        'eav' => ['entities'],
+        'business' => ['entities'],
+        'data' => ['entities', 'sql', 'redis'],
+    ];
     public const DEFAULT_EXCLUDED = ['health_check.php', '/health', '/static/', '/media/', 'cron.php', 'get.php'];
     public const DEFAULT_SPAN_CAP = 500;
 
@@ -114,9 +126,9 @@ class Config implements InstrumentationGuardInterface
             if ($item === 'all') {
                 array_push($groups, ...$known);
             } elseif (str_starts_with($item, '-')) {
-                $subtract[] = substr($item, 1);
+                array_push($subtract, ...$this->expand(substr($item, 1)));
             } else {
-                $groups[] = $item;
+                array_push($groups, ...$this->expand($item));
             }
         }
         // Only "-x" items given: they subtract from the defaults.
@@ -125,5 +137,16 @@ class Config implements InstrumentationGuardInterface
         }
 
         return array_values(array_intersect(array_diff(array_unique($groups), $subtract), $known));
+    }
+
+    /**
+     * Expands an alias into the groups it stands for; any other name is returned as is.
+     *
+     * @param string $name
+     * @return string[]
+     */
+    private function expand(string $name): array
+    {
+        return self::GROUP_ALIASES[$name] ?? [$name];
     }
 }
