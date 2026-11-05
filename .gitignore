@@ -4,3 +4,5 @@ tools/*/vendor/
 var/
 composer.lock.bak
 .idea/
+e2e/.output/
+e2e/.magento/

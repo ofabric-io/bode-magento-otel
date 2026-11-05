@@ -26,7 +26,8 @@ composer.json                        development root: a path repository on pack
 tools/quality, tools/phpstan         isolated lint toolchains (their dependency trees conflict)
 tests/Unit                           conventions of the packages (no shop references, allowed dependencies, manifests)
 harness/                             end-to-end scenarios with the real extension against a local Grafana LGTM stack
-bin/                                 dev wrapper, installer, install check
+e2e/                                 a real Magento 2.4.9, compiled DI, production mode (in progress, see bin/e2e)
+bin/                                 dev wrapper, installer, install check, e2e entry point
 docs/releasing.md                    how a release reaches Packagist
 ```
 
@@ -46,12 +47,16 @@ bin/dev composer test          # unit tests of all packages + repository convent
 bin/dev composer verify        # all of the above
 bin/dev bin/verify-install     # a throwaway project requires the packages like a Magento store would
 harness/run.sh up && harness/run.sh scenarios   # real telemetry into a local Grafana (Docker)
+bin/e2e up && bin/e2e install && bin/e2e web-up # a real Magento 2.4.9, compiled DI, production mode (Docker)
 ```
 
 Magento's framework comes from the public [Mage-OS mirror](https://mirror.mage-os.org/), so no Magento licence keys are
 needed anywhere. CI (`.github/workflows/ci.yml`) runs the same commands, on PHP 8.5.
 
-Unit tests of the packages use no Magento classes. What needs a full Magento (compiled DI, a real request) belongs to
-the project that installs the packages.
+Unit tests of the packages use no Magento classes. What needs a full Magento (compiled DI, a real request,
+`app/etc/di.xml` merge behaviour, the full page cache) belongs to `e2e/`, driven by `bin/e2e`: a real
+`magento/project-community-edition` installed from the Mage-OS mirror, the packages required from a path repository,
+`setup:di:compile`'d in production mode. See `e2e/run.sh` for every subcommand. A CI workflow running the same thing
+is in progress.
 
 Releasing: [docs/releasing.md](docs/releasing.md).

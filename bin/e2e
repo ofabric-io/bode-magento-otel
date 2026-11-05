@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# The local entry point for the Magento end-to-end job: identical to what .github/workflows/magento-e2e.yml runs.
+# See e2e/run.sh for the subcommands (up, install, web-up, scenario <name>, assert <name>, web-down, down).
+set -euo pipefail
+exec "$(dirname "$0")/../e2e/run.sh" "$@"
