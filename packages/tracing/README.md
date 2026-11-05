@@ -40,7 +40,7 @@ bin/magento setup:upgrade
 | `sql` (off) | Database queries: verb, bounded table, obfuscated text. |
 | `events` (off) | Dispatched Magento events (name only). |
 | `redis` (off) | Redis cache backend commands (command only). |
-| `eav`, `business` (off) | Reserved names. Upstream's entity, pricing, totals and repository hooks were not carried over. |
+| `entities` (off) | Entity `load`/`save`/`delete` and collection `load` spans (`entity <op> <entity type or main table>`, `collection load <table>`), so SQL and Redis spans nest under the business operation that caused them. Attributes: `bode.magento.entity.operation`, `bode.magento.entity.type` or `db.collection.name`, `bode.magento.collection.size` (rows, collections only). Never ids, field values or arguments; errors record the exception class only. One span per object even when an EAV entity delegates to a flat resource. `eav` and `business` are deprecated aliases of `entities`. Hook targets: `Magento\Framework\Model\ResourceModel\Db\AbstractDb::{load,save,delete}`, `Magento\Eav\Model\Entity\AbstractEntity::{load,save,delete}`, `Magento\Framework\Data\Collection\AbstractDb::load`, `Magento\Eav\Model\Entity\Collection\AbstractCollection::load`. |
 
 Request spans carry: area, store and website code, `enduser.id` (customer id, or admin user id), customer group or admin
 role (`bode.magento.admin.role`), a keyed hash of the session id, `client.address`, the configured correlation headers,
@@ -62,7 +62,7 @@ message bodies.
 | Variable | Default | Meaning |
 |---|---|---|
 | `MAGENTO_OTEL_ENABLED` | `true` | `false` switches everything off |
-| `MAGENTO_OTEL_TRACING_GROUPS` | `http,cron,cli,indexer,cache,queue,outbound` | Groups on. `all` enables every group, `-name` subtracts from the defaults, `http,sql` is an explicit list |
+| `MAGENTO_OTEL_TRACING_GROUPS` | `http,cron,cli,indexer,cache,queue,outbound` | Groups on. `all` enables every group, `-name` subtracts from the defaults, `http,sql` is an explicit list. Aliases: `eav` and `business` (deprecated) = `entities`; `data` = `entities,sql,redis`; aliases work with `-` and `all`. Unknown names are ignored |
 | `MAGENTO_OTEL_EXCLUDED_PATHS` | `health_check.php,/health,/static/,/media/,cron.php,get.php` | Request path fragments that are never traced |
 | `MAGENTO_OTEL_SPAN_CAP` | `500` | Spans per request, cron job or queue message; the rest are counted as dropped, and the counter resets for the next unit of work |
 | `MAGENTO_OTEL_IP_MODE` | `truncate` | `full`, `truncate` (/24, /48), `hash`, `off` |

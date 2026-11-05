@@ -22,7 +22,7 @@ interface InstrumentationGuardInterface
     /**
      * True when a feature group is switched on in MAGENTO_OTEL_TRACING_GROUPS.
      *
-     * Groups: http, cron, cli, indexer, cache, queue, outbound (default on); events, sql, eav, redis, business.
+     * Groups: http, cron, cli, indexer, cache, queue, outbound (default on); events, sql, entities, redis.
      *
      * @param string $group
      * @return bool

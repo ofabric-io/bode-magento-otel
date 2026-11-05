@@ -27,7 +27,7 @@ class ConfigAndBudgetTest extends TestCase
         foreach (['http', 'cron', 'cli', 'indexer', 'cache', 'queue', 'outbound'] as $group) {
             self::assertTrue($config->isGroupEnabled($group), $group);
         }
-        foreach (['events', 'sql', 'eav', 'redis', 'business'] as $group) {
+        foreach (['events', 'sql', 'entities', 'eav', 'redis', 'business', 'data'] as $group) {
             self::assertFalse($config->isGroupEnabled($group), $group);
         }
     }
@@ -48,6 +48,27 @@ class ConfigAndBudgetTest extends TestCase
 
         $junk = $this->config(['MAGENTO_OTEL_TRACING_GROUPS' => 'http,nonsense']);
         self::assertSame(['http'], $junk->groups());
+    }
+
+    public function testDeprecatedAliasesResolveToEntitiesAndDataIsComposite(): void
+    {
+        self::assertSame(['entities'], $this->config(['MAGENTO_OTEL_TRACING_GROUPS' => 'eav'])->groups());
+        self::assertSame(['entities'], $this->config(['MAGENTO_OTEL_TRACING_GROUPS' => 'business,eav'])->groups());
+        self::assertSame(
+            ['entities', 'sql', 'redis'],
+            $this->config(['MAGENTO_OTEL_TRACING_GROUPS' => 'data'])->groups()
+        );
+        $mixed = $this->config(['MAGENTO_OTEL_TRACING_GROUPS' => 'http,data,-redis']);
+        self::assertTrue($mixed->isGroupEnabled('entities'));
+        self::assertTrue($mixed->isGroupEnabled('sql'));
+        self::assertFalse($mixed->isGroupEnabled('redis'));
+        $all = $this->config(['MAGENTO_OTEL_TRACING_GROUPS' => 'all,-data']);
+        self::assertFalse($all->isGroupEnabled('entities'));
+        self::assertFalse($all->isGroupEnabled('sql'));
+        self::assertTrue($all->isGroupEnabled('events'));
+        self::assertTrue($all->isGroupEnabled('http'));
+        self::assertTrue($this->config(['MAGENTO_OTEL_TRACING_GROUPS' => 'all'])->isGroupEnabled('entities'));
+        self::assertFalse($this->config(['MAGENTO_OTEL_TRACING_GROUPS' => '-eav'])->isGroupEnabled('entities'));
     }
 
     public function testDisabledByEnvOrMissingRuntime(): void

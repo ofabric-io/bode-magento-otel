@@ -171,6 +171,7 @@ class Runtime
             \Bode\Tracing\Instrumentation\QueueInstrumentation::class,
             \Bode\Tracing\Instrumentation\OutboundHttpInstrumentation::class,
             \Bode\Tracing\Instrumentation\OptInInstrumentation::class,
+            \Bode\Tracing\Instrumentation\EntityInstrumentation::class,
         ];
 
         return array_map(static fn (string $class): InstrumentationInterface => new $class(), $classes);
