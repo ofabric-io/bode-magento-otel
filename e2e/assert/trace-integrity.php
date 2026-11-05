@@ -45,8 +45,7 @@ foreach ($strays as $trace) {
 check(
     'no stray traces: every span is in a trace a scenario started'
         . ($strays ? ' (' . count($strays) . ' strays, e.g. ' . implode(', ', array_slice(array_keys($strayNames), 0, 5)) . ')' : ''),
-    $strays === [],
-    'A'
+    $strays === []
 );
 
 foreach ($known as $traceId => $scenario) {
