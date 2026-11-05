@@ -61,14 +61,10 @@ harness/run.sh down
 
 ## 4. Definition of done: the verification ladder
 
-Green unit tests are the **floor**, not proof. Every one of the bugs below passed unit tests, phpcs and PHPStan:
-
-| Bug that shipped | Why nothing caught it | What catches it |
-|---|---|---|
-| `AdminAudit` took a bare `object` constructor parameter; compiled DI passed it the raw config array | `setup:di:compile` succeeds; the unit tests build the class by hand | Real Magento, **instantiate the classes through the compiled object manager** |
-| Our `handlers` argument in `di.xml` **replaced** Magento's (`system`, `debug`, `syslog`) and `system.log` stopped being written in production | No test resolved the logger's handler list | Inspect the **resolved** DI argument in a real Magento; keep `DiConfigTest` |
-| Cached storefront pages were named `GET unknown` (the full page cache answers before the router runs) | The stub request always had a route | Look at real traces from the real store, not only stubs |
-| An uncaught exception was reported three times (`restore_exception_handler()` re-installs the running handler) | Unit test used a fake handler chain | The harness with the real process and real stderr |
+Green unit tests are the **floor**, not proof. They build classes by hand, not through compiled DI; they don't exercise
+`app/etc/di.xml`'s merge-vs-replace behaviour; they don't run against a real `PageCache\Kernel`; and they don't run
+inside a real process's exception handler chain. Climbing the ladder below is how those gaps get closed, before a
+regression reaches a production shop.
 
 Rules that follow:
 
