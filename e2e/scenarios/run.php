@@ -365,6 +365,36 @@ switch ($scenario) {
         }
         break;
 
+    case 'entities-seed':
+        // Seeds a category and a product (no sample data on a fresh install) for the entities-* scenarios below.
+        [$code, $out, $err] = runScript('/e2e/scenarios/trigger-seed-product.php');
+        echo $out;
+        echo "entities-seed: exit $code\n";
+        if ($code !== 0) {
+            fwrite(STDERR, "trigger-seed-product.php failed: $err\n");
+            exit(1);
+        }
+        break;
+
+    case 'entities-product':
+    case 'entities-category':
+    case 'entities-home':
+        // Run against the all-groups web server (`bin/e2e entities`, service bode-e2e-entities): a product page, a
+        // category page and the home page, each under its own deterministic traceparent. The query string is there to
+        // prove it never reaches a span. First hits, so the full page cache cannot answer them.
+        $paths = [
+            'entities-product' => '/e2e-widget.html?utm_source=e2e',
+            'entities-category' => '/e2e-gear.html',
+            'entities-home' => '/',
+        ];
+        [$status] = httpGet($paths[$scenario], traceparentFor($scenario));
+        echo "$scenario: HTTP $status, trace " . traceIdFor($scenario) . "\n";
+        if ($status !== 200) {
+            fwrite(STDERR, "expected HTTP 200 from {$paths[$scenario]}, got $status (was entities-seed run?)\n");
+            exit(1);
+        }
+        break;
+
     default:
         fwrite(STDERR, "unknown scenario: $scenario\n");
         exit(2);
