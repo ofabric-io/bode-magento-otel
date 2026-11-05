@@ -198,6 +198,68 @@ switch ($scenario) {
             $logger->error('payment declined', ['order' => 'redacted']);
         });
         break;
+    // ---- Trace-tree scenarios: run with the groups in run.sh (tree_groups). Expected trees: harness/expectations.php.
+    case 'entity-product':
+        // A product page: an event, an EAV entity load that queries the database, a Redis read, all inside one request.
+        $event = new Magento\Framework\Event\Manager();
+        Harness\Nest::on('Magento\Eav\Model\Entity\AbstractEntity::load', static function (array $args): void {
+            Harness\Nest::sql('SELECT `e`.* FROM `catalog_product_entity` AS `e` WHERE (e.entity_id = 1042)');
+        });
+        $web('frontend', '/gold-coins/1oz-eagle-2026.html', static function ($r) use ($event): void {
+            $event->dispatch('catalog_controller_product_view', ['product' => 1042]);
+            (new Magento\Catalog\Model\ResourceModel\Product())->load(new Magento\Framework\Model\AbstractModel('catalog_product', 1042), 1042);
+            (new Cm_Cache_Backend_Redis())->load('CONFIG_cache_key_that_must_not_be_exported');
+            (new Magento\Cms\Model\ResourceModel\Block())->load(new Magento\Framework\Model\AbstractModel('cms_block', 3), 3);
+        });
+        break;
+    case 'events-bootstrap':
+        // Events dispatched before Bootstrap::run and after it have no unit of work to belong to: they must not start a
+        // trace of their own. The one during the request is a child of the request.
+        $event = new Magento\Framework\Event\Manager();
+        $event->dispatch('before_bootstrap_event');
+        $web('frontend', '/checkout/cart/', static function ($r) use ($event): void {
+            $event->dispatch('during_bootstrap_event');
+        });
+        $event->dispatch('after_bootstrap_event');
+        break;
+    case 'event-excluded-path':
+        // The request is on an excluded path (no root span), so the event inside it has no root either: dropped.
+        $event = new Magento\Framework\Event\Manager();
+        $web('frontend', '/static/frontend/Vendor/theme/en_US/app.js', static function ($r) use ($event): void {
+            $event->dispatch('static_asset_event');
+        });
+        break;
+    case 'cron-in-event':
+        // A cron job started from inside an event dispatched outside any request: the event is dropped (no root), the
+        // job is a root (cron) and owns the trace; what the job does is its child.
+        $event = new Magento\Framework\Event\Manager();
+        Harness\Nest::on('Magento\Framework\Event\Manager::dispatch', static function (array $args) use ($schedule, $job): void {
+            if ($args[0] === 'cron_from_event') {
+                (new Magento\Cron\Observer\ProcessCronQueueObserver())->tryRunJob(0, 0, $job('cron_from_event'), $schedule(), 'default');
+            }
+        });
+        Harness\Nest::on('Magento\Cron\Observer\ProcessCronQueueObserver::tryRunJob', static function (array $args): void {
+            Harness\Nest::sql('SELECT `main_table`.* FROM `cron_schedule` AS `main_table` WHERE (status = \'pending\')');
+        });
+        $event->dispatch('cron_from_event');
+        break;
+    case 'collection-volume':
+        // A collection of many rows whose items each load an entity and query the database: thousands of candidate spans
+        // in one request. Per-trace caps (and collapsing) must keep the trace bounded and the tree intact.
+        $rows = (int) (getenv('HARNESS_ROWS') ?: 400);
+        Harness\Nest::on('Magento\Eav\Model\Entity\Collection\AbstractCollection::load', static function () use ($rows): void {
+            $entity = new Magento\Catalog\Model\ResourceModel\Product();
+            for ($i = 1; $i <= $rows; $i++) {
+                $entity->load(new Magento\Framework\Model\AbstractModel('catalog_product', $i), $i);
+            }
+        });
+        Harness\Nest::on('Magento\Eav\Model\Entity\AbstractEntity::load', static function (array $args): void {
+            Harness\Nest::sql('SELECT `e`.* FROM `catalog_product_entity` AS `e` WHERE (e.entity_id = ' . (int) $args[1] . ')');
+        });
+        $web('frontend', '/gold-coins.html', static function ($r): void {
+            (new Magento\Catalog\Model\ResourceModel\Product\Collection())->load();
+        });
+        break;
     case 'bench':
         // Instrumentation cost per simulated request: Bootstrap::run + area + front controller, as a storefront page
         // triggers with the default groups. The stub application does nothing, so this is the overhead itself, not a

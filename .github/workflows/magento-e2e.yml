@@ -139,6 +139,13 @@ jobs:
             bin/e2e assert "$assertion"
           done
 
+      # Mirrors `bin/e2e entities`: every tracing group on, a seeded product and category browsed, then the
+      # trace-integrity (one trace per request, no stray or parentless spans) and entities assertions. Checks marked
+      # EXPECT_AFTER in e2e/assert/*.php stay red-but-non-failing until the rail they name merges
+      # (E2E_STRICT_EXPECT=1 makes them gate; set it here once rails A and B are on main and the markers are gone).
+      - name: All groups on (entities, trace integrity)
+        run: bin/e2e entities
+
       - name: Upload failure artifacts (Collector output, Magento logs and compiled DI metadata)
         if: failure()
         uses: actions/upload-artifact@v4
