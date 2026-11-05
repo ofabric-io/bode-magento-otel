@@ -9,6 +9,7 @@ use Bode\Tracing\Instrumentation\EntityInstrumentation;
 use Bode\Tracing\Model\Config;
 use Bode\Tracing\Model\Environment;
 use Bode\Tracing\Test\Unit\Hook\FakeRegistrar;
+use Bode\Tracing\Test\Unit\Hook\FakeSpan;
 use OpenTelemetry\API\Trace\SpanKind;
 use OpenTelemetry\Context\ScopeInterface;
 use OpenTelemetry\SDK\Sdk;
@@ -58,6 +59,8 @@ class EntityInstrumentationTest extends TestCase
         $env = new Environment(['MAGENTO_OTEL_TRACING_GROUPS' => 'entities']);
         $this->runtime = new Runtime(new Config($env, true), $env, $this->registrar);
         (new EntityInstrumentation())->register($this->runtime);
+        // Entity spans are child-only: they need the root of a unit of work (a request, job, message or command).
+        $this->runtime->stack->pushRoot(new FakeSpan());
     }
 
     protected function tearDown(): void
@@ -87,6 +90,21 @@ class EntityInstrumentationTest extends TestCase
             $inside();
         }
         ($this->registrar->hooks[$target]['post'])($subject, $params, null, $e);
+    }
+
+    public function testEntitySpanWithoutAUnitRootIsDroppedAndCountedNotStartedAsATrace(): void
+    {
+        $env = new Environment(['MAGENTO_OTEL_TRACING_GROUPS' => 'entities']);
+        $registrar = new FakeRegistrar();
+        $runtime = new Runtime(new Config($env, true), $env, $registrar);
+        (new EntityInstrumentation())->register($runtime);
+
+        ($registrar->hooks[self::FLAT . '::load']['pre'])(new FakeResource('sales_order'), [new \stdClass(), 1]);
+        ($registrar->hooks[self::FLAT . '::load']['post'])(new FakeResource('sales_order'), [], null, null);
+
+        self::assertSame([], $this->exporter->getSpans(), 'no fragment trace');
+        self::assertSame(1, $runtime->stack->orphanedTotal());
+        self::assertSame(0, $runtime->stack->depth(), 'hooks stay balanced');
     }
 
     public function testRegistersTheDocumentedHookTargets(): void

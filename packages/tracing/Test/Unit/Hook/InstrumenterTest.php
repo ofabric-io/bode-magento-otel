@@ -199,6 +199,7 @@ class InstrumenterTest extends TestCase
     public function testRefusedAndCollapsedSpansKeepHooksBalanced(): void
     {
         $this->budget = new SpanBudget(10, ['http' => 1], 1);
+        $this->stack->pushRoot(new FakeSpan()); // child-only spans need a unit root
         $starts = 0;
         $this->instrumenter()->span('http', 'A', 'b', static function () use (&$starts): SpanHandleInterface {
             $starts++;
@@ -208,7 +209,7 @@ class InstrumenterTest extends TestCase
 
         for ($i = 0; $i < 3; $i++) {
             $this->registrar->call('A', 'b');
-            self::assertSame(0, $this->stack->depth());
+            self::assertSame(1, $this->stack->depth(), 'only the root is left');
         }
         self::assertSame(1, $starts);
     }

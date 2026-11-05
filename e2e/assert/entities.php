@@ -40,15 +40,13 @@ foreach (['entities-product' => $product, 'entities-category' => $category] as $
     check("$scenario: " . count($trace) . ' spans, within the cap', count($trace) <= 600);
 }
 
-// EXPECT_AFTER B
-check('entities-product: has entity load catalog_product', $any($product, 'entity load catalog_product'), 'B');
+check('entities-product: has entity load catalog_product', $any($product, 'entity load catalog_product'));
 check(
     'entities-product: GET * > entity load catalog_product > SELECT catalog_product_entity',
     pathExists($product, 'GET * > entity load catalog_product > SELECT catalog_product_entity'),
-    'B'
 );
-check('entities-category: has entity load catalog_category', $any($category, 'entity load catalog_category'), 'B');
-check('entities-category: has a collection load span', $any($category, 'collection load*'), 'B');
+check('entities-category: has entity load catalog_category', $any($category, 'entity load catalog_category'));
+check('entities-category: has a collection load span', $any($category, 'collection load*'));
 
 // Privacy: the seeded values must never appear (sku/name of the seeded product, query string markers).
 $forbidden = ['Secret Name', '?bench', 'bench=', 'utm_source', '@example.'];

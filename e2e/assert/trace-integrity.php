@@ -62,8 +62,7 @@ foreach ($known as $traceId => $scenario) {
     check(
         "$scenario: no parentless non-root span"
             . ($orphans ? ' (found: ' . implode(', ', array_slice(array_column($orphans, 'name'), 0, 5)) . ')' : ''),
-        $orphans === [],
-        'A'
+        $orphans === []
     );
     $roots = array_values(array_filter($tops, static fn (array $s): bool => $s['parentSpanId'] === spanIdFor($scenario)));
     check("$scenario: exactly one root, child of the remote parent (found " . count($roots) . ')', count($roots) === 1);

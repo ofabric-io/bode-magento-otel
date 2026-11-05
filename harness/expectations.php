@@ -32,47 +32,42 @@ return [
             ['GET *', null],
             ['GET * > event catalog_controller_product_view', null],
             ['GET * > redis GET', null],
-            // EXPECT_AFTER B: entity spans exist, and the queries are children of the entity load that issued them.
-            ['GET * > entity load catalog_product > SELECT catalog_product_entity', 'B'],
-            ['GET * > entity load cms_block', 'B'],
+            ['GET * > entity load catalog_product > SELECT catalog_product_entity', null],
+            ['GET * > entity load cms_block', null],
         ],
         'absent' => [],
     ],
     'events-bootstrap' => [
-        // EXPECT_AFTER A: before/after events are dropped, not started as traces of their own.
-        'traces' => [1, 'A'],
-        'orphans' => 'A',
+        'traces' => [1, null],
+        'orphans' => null,
         'paths' => [
             ['GET * > event during_bootstrap_event', null],
         ],
         'absent' => [
-            ['event before_bootstrap_event', 'A'],
-            ['event after_bootstrap_event', 'A'],
+            ['event before_bootstrap_event', null],
+            ['event after_bootstrap_event', null],
         ],
     ],
     'event-excluded-path' => [
-        // EXPECT_AFTER A: an excluded path has no root, the event inside it must not become a trace.
-        'traces' => [0, 'A'],
-        'orphans' => 'A',
+        'traces' => [0, null],
+        'orphans' => null,
         'paths' => [],
-        'absent' => [['event static_asset_event', 'A']],
+        'absent' => [['event static_asset_event', null]],
     ],
     'cron-in-event' => [
-        // EXPECT_AFTER A: the event is dropped, the cron job is the root and the query is its child.
-        'traces' => [1, 'A'],
-        'orphans' => 'A',
+        'traces' => [1, null],
+        'orphans' => null,
         'paths' => [
-            ['cron cron_from_event > SELECT cron_schedule', 'A'],
+            ['cron cron_from_event > SELECT cron_schedule', null],
         ],
-        'absent' => [['event cron_from_event', 'A']],
+        'absent' => [['event cron_from_event', null]],
     ],
     'collection-volume' => [
         'traces' => [1, null],
         'orphans' => null,
         'paths' => [
             ['GET *', null],
-            // EXPECT_AFTER B: the collection and its entity loads are spans under the request.
-            ['GET * > collection load*', 'B'],
+            ['GET * > collection load*', null],
         ],
         'absent' => [],
         // 400 rows x (entity + query) = 800 candidate spans once rail B emits entity spans; the trace must stay bounded
