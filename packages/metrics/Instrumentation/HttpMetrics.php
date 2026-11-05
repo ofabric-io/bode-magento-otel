@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Bode\Metrics\Instrumentation;
 
 use Bode\Metrics\Hook\MetricsContext;
-use Bode\Tracing\Api\RouteNormalizerInterface;
 use Magento\Framework\App\Bootstrap;
 use Magento\Framework\App\FrontController;
 use Magento\Framework\App\PageCache\Kernel;
@@ -15,11 +14,16 @@ use Magento\Webapi\Controller\Rest\Router;
 use Throwable;
 
 /**
- * http.server.request.duration and the error counter, labelled by route (Magento full action name, REST route
- * template or GraphQL operation), method, status class and area. No paths, no ids, no query strings.
+ * http.server.request.duration and the error counter, labelled by the same resource name as traces/logs (the
+ * resolved route/controller/action, the REST route template, or the GraphQL operation), method, status class and
+ * area. No paths, no ids, no query strings. The process-wide CardinalityGuard (Recorder) is the safety net for the
+ * one unbounded-looking source: the best-effort path template of a full page cache hit.
  */
 class HttpMetrics implements InstrumentationInterface
 {
+    /** Magento's own marker for a request forwarded to its "no route" (404) handler (App\Router\Base::NO_ROUTE). */
+    private const NO_ROUTE_ACTION = 'noroute';
+
     /**
      * @var string
      */
@@ -78,30 +82,48 @@ class HttpMetrics implements InstrumentationInterface
             'dispatch',
             function (?object $s, array $params) use ($context): void {
                 $request = $params[0] ?? null;
-                if (is_object($request) && method_exists($request, 'getRouteName')) {
-                    $route = $context->routes->fullActionName(
+                if (!is_object($request) || !method_exists($request, 'getActionName')) {
+                    return;
+                }
+                $actionName = (string) $request->getActionName();
+                if ($actionName === self::NO_ROUTE_ACTION) {
+                    // Same reasoning as HttpInstrumentation: the controller segment of a 404 is unbounded
+                    // (whatever the visitor typed), so it is never used here, only the already-validated route.
+                    $this->route = $context->routes->resourceName(
                         (string) $request->getRouteName(),
-                        (string) $request->getControllerName(),
-                        (string) $request->getActionName()
+                        self::NO_ROUTE_ACTION,
+                        self::NO_ROUTE_ACTION
                     );
-                    // Nothing was routed (a cache hit, a redirect): keep the route the request already has.
-                    if ($route !== 'unknown') {
-                        $this->route = $route;
-                    }
+                    $this->method = $this->methodOf($request);
+
+                    return;
+                }
+                $route = $context->routes->resourceName(
+                    (string) $request->getRouteName(),
+                    (string) $request->getControllerName(),
+                    $actionName
+                );
+                // Nothing was routed (a cache hit, a redirect): keep the route the request already has.
+                if ($route !== 'unknown') {
+                    $this->route = $route;
                     $this->method = $this->methodOf($request);
                 }
             }
         );
 
         // The built-in full page cache answers before the router runs, so a cached storefront page has no action
-        // name: label it explicitly instead of "unknown" (the same value as the trace's http.route).
+        // name: fall back to a best-effort template of the raw path, same as the trace's resource name. The
+        // process-wide CardinalityGuard bounds this specific source, since it is the only one not already a fixed,
+        // pre-known value.
         $context->after(
             'http',
             Kernel::class,
             'load',
-            function (?object $s, array $params, mixed $response): void {
+            function (?object $s, array $params, mixed $response) use ($context): void {
                 if (is_object($response)) {
-                    $this->route = RouteNormalizerInterface::PAGE_CACHE_HIT;
+                    // phpcs:ignore Magento2.Security.Superglobal -- same raw URI Bode_Tracing reads for this fallback
+                    $uri = (string) ($_SERVER['REQUEST_URI'] ?? '/');
+                    $this->route = $context->routes->restTemplate($uri);
                 }
             }
         );

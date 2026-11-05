@@ -5,17 +5,18 @@ declare(strict_types=1);
 namespace Bode\Tracing\Api;
 
 /**
- * Turns request data into low-cardinality names. Shared with Bode_Metrics.
+ * Turns request data into low-cardinality names. Shared with Bode_Metrics and Bode_Logs.
+ *
+ * Magento has no declared URL route table for storefront, admin or CMS pages (unlike REST or GraphQL): a path such
+ * as /some-product.html is resolved through the URL Rewrite table to an arbitrary route/controller/action, not
+ * matched against a literal pattern. Per the OpenTelemetry HTTP spec, a name must not be fabricated for a route that
+ * was never declared, so those pages are named after the resolved route/controller/action instead of the URL
+ * (resourceName()), the same way Datadog names resources Controller#action for frameworks without a route table.
  *
  * @api
  */
 interface RouteNormalizerInterface
 {
-    /**
-     * Route of a page that the built-in full page cache served: it answers before routing, so there is no action name.
-     */
-    public const PAGE_CACHE_HIT = 'page_cache_hit';
-
     /**
      * Path without query string, fragment or scheme/host.
      *
@@ -25,17 +26,21 @@ interface RouteNormalizerInterface
     public function path(string $uri): string;
 
     /**
-     * Magento full action name (catalog_product_view) built from the route parts, or 'unknown'.
+     * Datadog-style resource name for a resolved route with no declared route table:
+     * {Route}{Controller}Controller#{action}, for example CatalogProductController#view. 'unknown' when the route
+     * part is empty (nothing resolved yet).
      *
      * @param string $route
      * @param string $controller
      * @param string $action
      * @return string
      */
-    public function fullActionName(string $route, string $controller, string $action): string;
+    public function resourceName(string $route, string $controller, string $action): string;
 
     /**
-     * REST route template with ids replaced by placeholders: /V1/products/:id.
+     * Route template with ids replaced by placeholders and route words lower-cased: /v1/products/:id. Used for the
+     * REST API (a declared route table) and, as a best-effort fallback, for a full page cache hit (no controller is
+     * known yet, only the raw request path). Bounded: long paths are truncated, visibly.
      *
      * @param string $path
      * @return string

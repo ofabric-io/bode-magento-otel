@@ -36,4 +36,20 @@ class TelemetryState implements TelemetryStateInterface
     {
         return Runtime::get()?->errors->counts() ?? [];
     }
+
+    /**
+     * @inheritdoc
+     */
+    public function resolvedControllerClass(): ?string
+    {
+        return Runtime::get()?->action->controllerClass();
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function resolvedActionName(): ?string
+    {
+        return Runtime::get()?->action->actionName();
+    }
 }

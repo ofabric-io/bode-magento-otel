@@ -10,6 +10,7 @@ use Bode\Tracing\Model\Config;
 use Bode\Tracing\Model\Environment;
 use Bode\Tracing\Model\ErrorCounter;
 use Bode\Tracing\Model\Privacy;
+use Bode\Tracing\Model\ResolvedAction;
 use Bode\Tracing\Model\RouteNormalizer;
 use Bode\Tracing\Model\SpanBudget;
 use Bode\Tracing\Model\SqlObfuscator;
@@ -73,6 +74,7 @@ class Runtime
         $this->privacy = new Privacy($env);
         $this->routes = new RouteNormalizer();
         $this->sql = new SqlObfuscator();
+        $this->action = new ResolvedAction();
     }
 
     /**
@@ -89,6 +91,14 @@ class Runtime
      * @var SqlObfuscator
      */
     public readonly SqlObfuscator $sql;
+
+    /**
+     * The real controller/service class and action resolved for the request in progress. Reset at the start of
+     * every request (HttpInstrumentation::begin()).
+     *
+     * @var ResolvedAction
+     */
+    public readonly ResolvedAction $action;
 
     /**
      * Registers all instrumentations once per process (called from registration.php).

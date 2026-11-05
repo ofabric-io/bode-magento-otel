@@ -30,7 +30,7 @@ bin/magento setup:upgrade
 
 | Group (default) | Spans |
 |---|---|
-| `http` (on) | One SERVER root span per request in every area, named `<METHOD> <route>`: the Magento full action name (`catalog_product_view`), the REST route template (`/V1/products/:id`) or `graphql <operation>`. Honours an incoming `traceparent`. |
+| `http` (on) | One SERVER root span per request in every area, named `<METHOD> <resource>`. Magento has no declared route table for storefront/admin/CMS pages, so those are named after the resolved route/controller/action (`CatalogProductController#view`), the same way Datadog names resources `Controller#action` for frameworks without one. REST (`/v1/products/:id`) and GraphQL (`graphql <operation>`) do have a declared route table, so they keep a route template and are the only two that also set the `http.route` attribute. A full page cache hit has no controller yet, so it falls back to a best-effort template of the raw path. `code.namespace` (the real PHP controller/service class) and `bode.magento.action` (the resolved action name) are set wherever a controller or REST route resolves; `bode.magento.route_resolution=noroute` flags a request Magento forwarded to its built-in 404 handler. Honours an incoming `traceparent`. |
 | `cron` (on) | One root span per job (`cron <job_code>`), with group, final status, error type; Schedule status changes are span events. |
 | `cli` (on) | `cli <command>`, with the exit code. Not for `cron:run` and `queue:consumers:start`, which run for hours. |
 | `indexer` (on) | `indexer <id> reindexAll\|reindexList\|reindexRow`, `mview <id> update`. |
@@ -49,9 +49,13 @@ events (`admin.audit`): who (id), entity type, action, never field values.
 
 ## Never recorded
 
-Query strings and the raw URL (`url.path` exists only for REST, as the route template), request and response bodies,
-GraphQL queries and variables, resolver values, SQL literals and bind values, e-mail addresses, names, the raw session id,
-exception messages and traces (only the exception class), cache keys and tags, queue message bodies.
+Query strings are never recorded, and `http.route`/the span name are always a bounded template, never the raw URL. The
+literal, query-free path (`url.path`) is recorded on every request, for every area, so a trace can still be traced back
+to the exact page; it is never used to build `http.route` or the span name (storefront/admin/CMS pages carry slugs,
+ids and one-time keys that must never become part of a low-cardinality name). Also never recorded: request and
+response bodies, GraphQL queries and variables, resolver values, SQL literals and bind values, e-mail addresses,
+names, the raw session id, exception messages and traces (only the exception class), cache keys and tags, queue
+message bodies.
 
 ## Configuration (environment variables)
 

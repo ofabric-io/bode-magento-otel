@@ -159,9 +159,11 @@ $scenario = $argv[1] ?? '';
 
 switch ($scenario) {
     case 'home':
-        // First hit: a real request through the full stack, no page cache yet. Second hit: the built-in full page
-        // cache answers it, which is exactly the path that used to be named "GET unknown" (AGENTS.md section 6) —
-        // the span assertion checks the second trace's root span is named "GET page_cache_hit" instead.
+        // First hit: a real request through the full stack, no page cache yet - names the root span after the
+        // resolved route/controller/action (CatalogProductController#view-style, no http.route: storefront has no
+        // declared route table). Second hit: the built-in full page cache answers it, before any controller
+        // resolves - the span assertion checks the second trace's root span falls back to a best-effort template
+        // of the raw path ("GET /") instead of the old "GET unknown"/"GET page_cache_hit" sentinel.
         [$status1] = httpGet('/', traceparentFor('home-1'));
         echo "home-1: HTTP $status1, trace " . traceIdFor('home-1') . "\n";
         [$status2] = httpGet('/', traceparentFor('home-2'));

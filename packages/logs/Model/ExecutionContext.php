@@ -84,6 +84,20 @@ class ExecutionContext implements ResetAfterRequestInterface
             if ($route !== null) {
                 $attributes['http.route'] = $route;
             }
+            if ($this->request->isNoRoute()) {
+                $attributes['bode.magento.route_resolution'] = 'noroute';
+            }
+            // Not code.namespace/code.function: those already mean the log call site (RecordAssembler's caller
+            // resolution, set first and never overwritten by array +=). This is the controller that handled the
+            // request, a different fact that can disagree with the call site.
+            $controllerClass = $this->request->controllerClass();
+            if ($controllerClass !== null) {
+                $attributes['bode.magento.controller_class'] = $controllerClass;
+            }
+            $magentoAction = $this->request->magentoAction();
+            if ($magentoAction !== null) {
+                $attributes['bode.magento.action'] = $magentoAction;
+            }
         }
         $attributes['correlation.id'] = $this->correlationId();
         if ($this->cronJobCode !== null) {
@@ -189,7 +203,9 @@ class ExecutionContext implements ResetAfterRequestInterface
     }
 
     /**
-     * Route of the web request: Magento's action name, or the REST route template for web API requests.
+     * Route of the web request.
+     *
+     * The resolved route/controller/action (CatalogProductController#view), or the REST route template.
      *
      * @param string|null $area
      * @param string $path

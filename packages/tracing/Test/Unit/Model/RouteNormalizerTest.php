@@ -28,28 +28,49 @@ class RouteNormalizerTest extends TestCase
         self::assertSame('/', $this->routes->path(''));
     }
 
-    public function testFullActionName(): void
+    public function testResourceNameIsDatadogStyleControllerHash(): void
     {
-        self::assertSame('catalog_product_view', $this->routes->fullActionName('catalog', 'product', 'view'));
-        self::assertSame('adminhtml_order_view', $this->routes->fullActionName('adminhtml', 'order', 'view'));
-        self::assertSame('cms_index_index', $this->routes->fullActionName('CMS', 'Index', 'index'));
-        self::assertSame('unknown', $this->routes->fullActionName('', '', ''));
-    }
-
-    public function testFullActionNameDropsUnsafeCharacters(): void
-    {
-        self::assertSame('catalog_product_view', $this->routes->fullActionName('cata log', 'pro/duct', 'vie.w'));
-    }
-
-    public function testRestTemplateReplacesIds(): void
-    {
-        self::assertSame('/rest/V1/products/:id', $this->routes->restTemplate('/rest/V1/products/ABC-123'));
-        self::assertSame('/rest/V1/orders/:id/comments', $this->routes->restTemplate('/rest/V1/orders/1042/comments'));
-        self::assertSame('/rest/V1/carts/mine/items', $this->routes->restTemplate('/rest/V1/carts/mine/items?x=1'));
         self::assertSame(
-            '/rest/default/V1/customers/:id',
+            'CatalogProductController#view',
+            $this->routes->resourceName('catalog', 'product', 'view')
+        );
+        self::assertSame(
+            'AdminhtmlOrderController#view',
+            $this->routes->resourceName('adminhtml', 'order', 'view')
+        );
+        self::assertSame('CmsIndexController#index', $this->routes->resourceName('CMS', 'Index', 'index'));
+        self::assertSame('unknown', $this->routes->resourceName('', '', ''));
+    }
+
+    public function testResourceNameDropsUnsafeCharacters(): void
+    {
+        self::assertSame(
+            'CataLogProDuctController#view',
+            $this->routes->resourceName('cata log', 'pro/duct', 'vie.w')
+        );
+    }
+
+    public function testRestTemplateReplacesIdsAndLowerCasesRouteWords(): void
+    {
+        self::assertSame('/rest/v1/products/:id', $this->routes->restTemplate('/rest/V1/products/ABC-123'));
+        self::assertSame('/rest/v1/orders/:id/comments', $this->routes->restTemplate('/rest/V1/orders/1042/comments'));
+        self::assertSame('/rest/v1/carts/mine/items', $this->routes->restTemplate('/rest/V1/carts/mine/items?x=1'));
+        self::assertSame(
+            '/rest/default/v1/customers/:id',
             $this->routes->restTemplate('/rest/default/V1/customers/jane%40example.com')
         );
+    }
+
+    public function testRestTemplateIsBoundedInDepthAndLength(): void
+    {
+        $deep = '/' . implode('/', array_fill(0, 20, 'segment'));
+        $template = $this->routes->restTemplate($deep);
+
+        self::assertStringEndsWith('/...', $template);
+        self::assertLessThanOrEqual(200 + strlen('...'), strlen($template));
+
+        $long = '/' . str_repeat('a', 500);
+        self::assertLessThanOrEqual(200 + strlen('...'), strlen($this->routes->restTemplate($long)));
     }
 
     public function testGraphQlOperationIsBounded(): void
