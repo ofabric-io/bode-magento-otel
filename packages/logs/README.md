@@ -45,7 +45,9 @@ against it.
 | `trace_id`, `span_id`, `trace_flags` | The current span (Bode_Tracing). Absent outside a trace. |
 | `resource` | Who is logging: `OTEL_SERVICE_NAME` and `OTEL_RESOURCE_ATTRIBUTES` (`service.version`, `deployment.environment.name`, ...), host, process. The same identity your traces and metrics carry. |
 | `code.*` | The emitting class and method and the call site (file, line), resolved past Monolog, Magento's logger and generated Interceptors/Proxies. |
-| `magento.area`, `http.*`, `url.path`, `client.address` | The web request: method, path **without query string**, the route (Magento's action name, or the REST route template), the client address as `MAGENTO_OTEL_IP_MODE` allows. |
+| `magento.area`, `http.*`, `url.path`, `client.address` | The web request: method, path **without query string**, the resolved route/controller/action matching Bode_Tracing's span name (or the REST route template), the client address as `MAGENTO_OTEL_IP_MODE` allows. |
+| `bode.magento.controller_class`, `bode.magento.action` | The real controller/service class and resolved action name for the request, bridged from Bode_Tracing. Not `code.*`: those already mean the log call site, which can be a different class than the one handling the request. |
+| `bode.magento.route_resolution` | `noroute` when Magento forwarded the request to its built-in "no route" (404) handler. |
 | `cli.command`, `messaging.consumer` | The `bin/magento` command, and the consumer name for `queue:consumers:start`. |
 | `cron.job_code`, `cron.schedule_id` | The cron job that is running, only while it runs. |
 | `correlation.id` | Ties the lines of one request or run together: the first header of `MAGENTO_OTEL_CORRELATION_HEADERS` (a CDN request id, for example), else a random id per request or process. |

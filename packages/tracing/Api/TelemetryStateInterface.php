@@ -34,4 +34,23 @@ interface TelemetryStateInterface
      * @return array<string,int> hook failures that were swallowed, by feature group
      */
     public function swallowedErrors(): array;
+
+    /**
+     * Real PHP class of the controller or REST service resolved for the current request.
+     *
+     * Null before a route resolves, for a full page cache hit, and for GraphQL (many resolvers, no single class).
+     *
+     * @return string|null
+     */
+    public function resolvedControllerClass(): ?string;
+
+    /**
+     * Resolved action name for the current request.
+     *
+     * Magento's action name (view, index, add...) or a REST service method. Null in the same cases as
+     * resolvedControllerClass().
+     *
+     * @return string|null
+     */
+    public function resolvedActionName(): ?string;
 }

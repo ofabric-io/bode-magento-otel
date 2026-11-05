@@ -10,6 +10,8 @@ use Bode\Tracing\Model\Config;
 use Bode\Tracing\Model\Environment;
 use Bode\Tracing\Test\Unit\Hook\FakeRegistrar;
 use Bode\Tracing\Test\Unit\Hook\FakeSpan;
+use Bode\Tracing\Test\Unit\Support\FakeController;
+use Magento\Framework\App\ActionFactory;
 use Magento\Framework\App\FrontController;
 use Magento\Framework\App\PageCache\Kernel;
 use PHPUnit\Framework\TestCase;
@@ -29,33 +31,42 @@ class HttpInstrumentationTest extends TestCase
      */
     private FakeSpan $root;
 
+    /**
+     * @var Runtime
+     */
+    private Runtime $runtime;
+
     protected function setUp(): void
     {
         $this->registrar = new FakeRegistrar();
         $env = new Environment(['MAGENTO_OTEL_ASSUME_WEB' => 'true']);
-        $runtime = new Runtime(new Config($env, true), $env, $this->registrar);
+        $this->runtime = new Runtime(new Config($env, true), $env, $this->registrar);
         $this->root = new FakeSpan();
-        $runtime->stack->push($this->root);
-        (new HttpInstrumentation())->register($runtime);
+        $this->runtime->stack->push($this->root);
+        (new HttpInstrumentation())->register($this->runtime);
     }
 
-    public function testPageCacheHitIsNamedAfterTheCacheNotUnknown(): void
+    public function testPageCacheHitIsNamedAfterABestEffortPathTemplateNotASentinel(): void
     {
+        $_SERVER['REQUEST_URI'] = '/catalog/category/view/id/42';
         $this->pageCacheLoad(new \stdClass());
         $this->frontControllerDispatched($this->request('', '', ''));
 
-        self::assertSame('GET page_cache_hit', $this->root->attributes['name']);
-        self::assertSame('page_cache_hit', $this->root->attributes['http.route']);
+        self::assertSame('GET /catalog/category/view/id/:id', $this->root->attributes['name']);
         self::assertSame('hit', $this->root->attributes['bode.magento.page_cache']);
+        self::assertArrayNotHasKey('http.route', $this->root->attributes, 'no declared route exists for a cache hit');
+        unset($_SERVER['REQUEST_URI']);
     }
 
-    public function testRoutedRequestIsNamedAfterItsFullActionName(): void
+    public function testRoutedRequestIsNamedAfterItsControllerAndAction(): void
     {
         $this->pageCacheLoad(false);
         $this->frontControllerDispatched($this->request('cms', 'index', 'index'));
 
-        self::assertSame('GET cms_index_index', $this->root->attributes['name']);
+        self::assertSame('GET CmsIndexController#index', $this->root->attributes['name']);
+        self::assertSame('index', $this->root->attributes['bode.magento.action']);
         self::assertArrayNotHasKey('bode.magento.page_cache', $this->root->attributes);
+        self::assertArrayNotHasKey('http.route', $this->root->attributes, 'no declared route exists for storefront');
     }
 
     public function testUnroutedRequestKeepsItsDefaultNameInsteadOfOverwritingIt(): void
@@ -63,6 +74,26 @@ class HttpInstrumentationTest extends TestCase
         $this->frontControllerDispatched($this->request('', '', ''));
 
         self::assertArrayNotHasKey('name', $this->root->attributes, 'a redirect has no action to name it after');
+    }
+
+    public function testNorouteRequestIsFlaggedAndNeverCarriesTheRawControllerSegment(): void
+    {
+        $this->frontControllerDispatched($this->request('cms', 'whatever-a-bot-probed', 'noroute'));
+
+        self::assertSame('GET CmsNorouteController#noroute', $this->root->attributes['name']);
+        self::assertSame('noroute', $this->root->attributes['bode.magento.route_resolution']);
+        self::assertStringNotContainsString('whatever-a-bot-probed', (string) $this->root->attributes['name']);
+    }
+
+    public function testActionFactoryStampsTheRealControllerClass(): void
+    {
+        $post = $this->registrar->hooks[ActionFactory::class . '::create']['post'] ?? null;
+        self::assertNotNull($post);
+
+        $post(null, ['Magento\Catalog\Controller\Product\View'], new FakeController(), null);
+
+        self::assertSame(FakeController::class, $this->root->attributes['code.namespace']);
+        self::assertSame(FakeController::class, $this->runtime->action->controllerClass());
     }
 
     private function pageCacheLoad(mixed $response): void

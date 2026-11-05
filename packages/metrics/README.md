@@ -20,9 +20,9 @@ bin/magento setup:upgrade
 
 **No unbounded or per-user labels, ever.** Never a user, customer or admin id, IP, session, SKU, order id, raw path or
 URL, query string, error message, schedule id or event name. Allowed attributes are bounded sets only: `http.route`
-(Magento full action name, REST route template, GraphQL operation), method, status class (`2xx`..`5xx`), area, store
-code, cron job code and group, indexer id, cache type, queue topic and consumer, payment method code, and outbound
-hosts from an allow-list.
+(the resolved route/controller/action, Datadog-style `Controller#action`, matching Bode_Tracing's span name; the REST
+route template; or the GraphQL operation), method, status class (`2xx`..`5xx`), area, store code, cron job code and
+group, indexer id, cache type, queue topic and consumer, payment method code, and outbound hosts from an allow-list.
 
 It is enforced in code, not by convention:
 
@@ -30,6 +30,8 @@ It is enforced in code, not by convention:
   the SDK. A second list of forbidden keys (user id, IP, session, URL, SKU, ...) can never be allowed, even by editing
   the first one. Tests pin both.
 - `CardinalityGuard` collapses new values of an attribute into `other` after 100 distinct values **in one process**.
+  This is the safety net for the one `http.route` value that is not a fixed, pre-known set: a full page cache hit,
+  which has no controller yet and falls back to a best-effort template of the raw request path.
   That protects long-running processes (consumers, cron) and bounds a bug. It cannot see across processes: PHP-FPM
   workers are short-lived and each sees only its own requests. The real protection is the allow-list plus bounded
   sources, and a series limit in the collector (see the shop's deployment docs).

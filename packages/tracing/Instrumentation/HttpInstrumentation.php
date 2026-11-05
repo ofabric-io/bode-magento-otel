@@ -4,13 +4,13 @@ declare(strict_types=1);
 
 namespace Bode\Tracing\Instrumentation;
 
+use Magento\Framework\App\ActionFactory;
 use Magento\GraphQl\Controller\GraphQl;
 use Magento\Webapi\Controller\Rest\Router;
 use Magento\Framework\App\State;
 use Magento\Framework\App\Bootstrap;
 use Magento\Framework\App\FrontController;
 use Magento\Framework\App\PageCache\Kernel;
-use Bode\Tracing\Api\RouteNormalizerInterface;
 use Bode\Tracing\Hook\Runtime;
 use Bode\Tracing\Hook\SpanHandleInterface;
 use Bode\Tracing\Model\ClientAddressResolver;
@@ -21,15 +21,26 @@ use Throwable;
 /**
  * Web requests in every area (storefront, admin, REST, GraphQL): one SERVER root span per request.
  *
- * The span is named "<METHOD> <route>" where the route is the Magento full action name (catalog_product_view), the
- * REST route template (/V1/products/:id) or the GraphQL operation name; never a URL, never a query string.
+ * The span is named "<METHOD> <resource>". Magento has no declared route table for storefront/admin/CMS pages (a
+ * URL is resolved through the URL Rewrite table, never matched against a literal pattern), so those pages are named
+ * after the resolved route/controller/action (CatalogProductController#view), the same way Datadog names resources
+ * Controller#action for frameworks without one. REST and GraphQL do have a declared route table, so they keep their
+ * route template (/v1/products/:id) and operation name (graphql GetCart); http.route is only ever set for those
+ * two, per the OpenTelemetry HTTP spec ("if the route cannot be determined, http.route MUST NOT be set"). A full
+ * page cache hit has no controller yet, so it falls back to a best-effort template of the raw path. Never a raw URL,
+ * never a query string, in the span name.
+ *
  * Identity enrichment (customer or admin id, store, ...) is done by Plugin\EnrichRequestSpan, which has DI.
  */
 // The SAPI superglobals are the request here: this runs before Magento builds its request object.
 // phpcs:disable Magento2.Security.Superglobal
 class HttpInstrumentation implements InstrumentationInterface
 {
+    /** Magento's own marker for a request forwarded to its "no route" (404) handler (App\Router\Base::NO_ROUTE). */
+    private const NO_ROUTE_ACTION = 'noroute';
+
     private const FRONT_CONTROLLER = FrontController::class;
+    private const ACTION_FACTORY = ActionFactory::class;
     private const BOOTSTRAP = Bootstrap::class;
     private const STATE = State::class;
     private const REST_ROUTER = Router::class;
@@ -69,38 +80,86 @@ class HttpInstrumentation implements InstrumentationInterface
             true
         );
 
+        // Fires once per request, the moment Magento (or its REST/noroute router) instantiates the controller that
+        // will handle it: the one place that gives the real PHP class, not the route/controller/action strings.
+        $instrumenter->after(
+            'http',
+            self::ACTION_FACTORY,
+            'create',
+            function (
+                SpanHandleInterface $root,
+                ?object $subject,
+                array $params,
+                mixed $returnValue
+            ) use ($runtime): void {
+                if (is_object($returnValue)) {
+                    $class = get_class($returnValue);
+                    $root->setAttribute('code.namespace', $class);
+                    $runtime->action->setControllerClass($class);
+                }
+            },
+            true
+        );
+
         $instrumenter->after(
             'http',
             self::FRONT_CONTROLLER,
             'dispatch',
             function (SpanHandleInterface $root, ?object $subject, array $params) use ($runtime): void {
                 $request = $params[0] ?? null;
-                if (!is_object($request) || !method_exists($request, 'getFullActionName')) {
+                if (!is_object($request) || !method_exists($request, 'getActionName')) {
                     return;
                 }
-                $route = $runtime->routes->fullActionName(
+                $actionName = (string) $request->getActionName();
+                if ($actionName === self::NO_ROUTE_ACTION) {
+                    // The controller segment of a 404 is whatever the visitor typed (unbounded); only the front
+                    // name is validated against a known module before Magento falls back to noroute. Never use the
+                    // raw controller segment here, or every probed URL would mint its own resource name.
+                    $resource = $runtime->routes->resourceName(
+                        (string) $request->getRouteName(),
+                        self::NO_ROUTE_ACTION,
+                        self::NO_ROUTE_ACTION
+                    );
+                    $this->setResource($root, $request, $resource);
+                    $root->setAttribute('bode.magento.route_resolution', 'noroute');
+                    $root->setAttribute('bode.magento.action', $actionName);
+                    $runtime->action->setActionName($actionName);
+
+                    return;
+                }
+                $resource = $runtime->routes->resourceName(
                     (string) $request->getRouteName(),
                     (string) $request->getControllerName(),
-                    (string) $request->getActionName()
+                    $actionName
                 );
                 // Nothing was routed (a cache hit, a redirect): keep the name the request already has.
-                if ($route !== 'unknown') {
-                    $this->setRoute($root, $request, $route);
+                if ($resource !== 'unknown') {
+                    $this->setResource($root, $request, $resource);
+                    $root->setAttribute('bode.magento.action', $actionName);
+                    $runtime->action->setActionName($actionName);
                 }
             },
             true
         );
 
         // The built-in full page cache answers before the router runs, so a cached storefront page has no action
-        // name. Without this, most storefront traffic would be named "GET unknown".
+        // name: fall back to a best-effort template of the raw path (identifiers collapsed, bounded), the one case
+        // where that template is used outside REST. No controller is known, so code.namespace/bode.magento.action
+        // are not set here.
         $instrumenter->after(
             'http',
             self::PAGE_CACHE,
             'load',
-            function (SpanHandleInterface $root, ?object $subject, array $params, mixed $response): void {
+            function (
+                SpanHandleInterface $root,
+                ?object $subject,
+                array $params,
+                mixed $response
+            ) use ($runtime): void {
                 if (is_object($response)) {
                     $root->setAttribute('bode.magento.page_cache', 'hit');
-                    $this->setRoute($root, null, RouteNormalizerInterface::PAGE_CACHE_HIT);
+                    $uri = (string) ($_SERVER['REQUEST_URI'] ?? '/');
+                    $this->setResource($root, null, $runtime->routes->restTemplate($uri));
                 }
             },
             true
@@ -113,14 +172,28 @@ class HttpInstrumentation implements InstrumentationInterface
             function (SpanHandleInterface $root, ?object $subject, array $params, mixed $route) use ($runtime): void {
                 if (is_object($route) && method_exists($route, 'getRoutePath')) {
                     $template = $runtime->routes->restTemplate((string) $route->getRoutePath());
-                    $this->setRoute($root, $params[0] ?? null, $template);
-                    $root->setAttribute('url.path', $template);
+                    $this->setResource($root, $params[0] ?? null, $template);
+                    $root->setAttribute('http.route', $template);
                     $root->setAttribute('bode.magento.api', 'rest');
+                    if (method_exists($route, 'getServiceClass') && method_exists($route, 'getServiceMethod')) {
+                        $serviceClass = (string) $route->getServiceClass();
+                        $serviceMethod = (string) $route->getServiceMethod();
+                        if ($serviceClass !== '') {
+                            $root->setAttribute('code.namespace', $serviceClass);
+                            $runtime->action->setControllerClass($serviceClass);
+                        }
+                        if ($serviceMethod !== '') {
+                            $root->setAttribute('bode.magento.action', $serviceMethod);
+                            $runtime->action->setActionName($serviceMethod);
+                        }
+                    }
                 }
             },
             true
         );
 
+        // GraphQL has no single resolved class per operation (many field resolvers, not one controller): deliberately
+        // not setting code.namespace/bode.magento.action here, unlike REST and storefront/admin.
         $instrumenter->after(
             'http',
             self::GRAPHQL,
@@ -128,7 +201,8 @@ class HttpInstrumentation implements InstrumentationInterface
             function (SpanHandleInterface $root, ?object $subject, array $params) use ($runtime): void {
                 $request = $params[0] ?? null;
                 $operation = $runtime->routes->graphQlOperation($this->graphQlOperationName($request));
-                $this->setRoute($root, $request, 'graphql ' . $operation);
+                $this->setResource($root, $request, 'graphql ' . $operation);
+                $root->setAttribute('http.route', 'graphql ' . $operation);
                 $root->setAttribute('bode.magento.api', 'graphql');
             },
             true
@@ -143,6 +217,7 @@ class HttpInstrumentation implements InstrumentationInterface
      */
     private function begin(Runtime $runtime): ?SpanHandleInterface
     {
+        $runtime->action->reset();
         $server = $_SERVER;
         $uri = (string) ($server['REQUEST_URI'] ?? '/');
         $path = $runtime->routes->path($uri);
@@ -151,11 +226,12 @@ class HttpInstrumentation implements InstrumentationInterface
         }
 
         $method = strtoupper(preg_replace('/[^A-Za-z]/', '', (string) ($server['REQUEST_METHOD'] ?? 'GET')) ?? 'GET');
-        // Until a route is known (router, REST, GraphQL, or a page cache hit) the request is "unknown": a redirect or a
-        // request that never reaches routing stays that way.
+        // Until a resource is known (router, REST, GraphQL, or a page cache hit) the request is "unknown": a
+        // redirect or a request that never reaches routing stays that way. url.path is the literal, query-free
+        // path: it is set once, here, for every area, independent of whatever resource name ends up on the span.
         $attributes = [
             'http.request.method' => $method,
-            'http.route' => 'unknown',
+            'url.path' => $path,
             'url.scheme' => (!empty($server['HTTPS']) && $server['HTTPS'] !== 'off') ? 'https' : 'http',
             'user_agent.original' => $runtime->privacy->userAgent((string) ($server['HTTP_USER_AGENT'] ?? '')),
         ];
@@ -189,8 +265,6 @@ class HttpInstrumentation implements InstrumentationInterface
      */
     private function finish(Runtime $runtime, SpanHandleInterface $span): void
     {
-        // No url.path here: a storefront or admin path can carry slugs, ids and one-time keys. The route (full
-        // action name) identifies the page; REST gets its route template from the router.
         $status = (int) http_response_code();
         if ($status > 0) {
             $span->setAttribute('http.response.status_code', $status);
@@ -210,20 +284,22 @@ class HttpInstrumentation implements InstrumentationInterface
     }
 
     /**
-     * Names the root span after the resolved route.
+     * Names the root span after the resolved resource.
+     *
+     * Does not set http.route: only REST and GraphQL have a declared route table, and that attribute is set
+     * directly at their own call sites.
      *
      * @param SpanHandleInterface $root
      * @param object|null $request
-     * @param string $route
+     * @param string $resource
      * @return void
      */
-    private function setRoute(SpanHandleInterface $root, ?object $request, string $route): void
+    private function setResource(SpanHandleInterface $root, ?object $request, string $resource): void
     {
         $method = $request !== null && method_exists($request, 'getMethod')
             ? strtoupper((string) $request->getMethod())
             : strtoupper(preg_replace('/[^A-Za-z]/', '', (string) ($_SERVER['REQUEST_METHOD'] ?? 'GET')) ?? 'GET');
-        $root->setAttribute('http.route', $route);
-        $root->setName(trim($method . ' ' . $route));
+        $root->setName(trim($method . ' ' . $resource));
     }
 
     /**

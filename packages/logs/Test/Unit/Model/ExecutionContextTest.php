@@ -74,7 +74,44 @@ class ExecutionContextTest extends TestCase
             new FakeRequestProvider('webapi_rest', 'ignored')
         );
 
-        self::assertSame('/rest/V1/products/:id', $context->attributes()['http.route']);
+        self::assertSame('/rest/v1/products/:id', $context->attributes()['http.route']);
+    }
+
+    public function testStampsTheRealControllerClassAndTheResolvedAction(): void
+    {
+        $context = Fixture::execution(
+            [],
+            ['REQUEST_URI' => '/catalog/product/view', 'REQUEST_METHOD' => 'GET'],
+            [],
+            'fpm-fcgi',
+            new FakeRequestProvider(
+                'frontend',
+                'CatalogProductController#view',
+                false,
+                'Magento\Catalog\Controller\Product\View',
+                'view'
+            )
+        );
+
+        $attributes = $context->attributes();
+        self::assertSame('Magento\Catalog\Controller\Product\View', $attributes['bode.magento.controller_class']);
+        self::assertSame('view', $attributes['bode.magento.action']);
+        self::assertArrayNotHasKey('bode.magento.route_resolution', $attributes);
+    }
+
+    public function testFlagsANoRouteRequestWithoutLeakingTheRawControllerSegment(): void
+    {
+        $context = Fixture::execution(
+            [],
+            ['REQUEST_URI' => '/whatever-a-bot-probed', 'REQUEST_METHOD' => 'GET'],
+            [],
+            'fpm-fcgi',
+            new FakeRequestProvider('frontend', 'CmsNorouteController#noroute', true)
+        );
+
+        $attributes = $context->attributes();
+        self::assertSame('noroute', $attributes['bode.magento.route_resolution']);
+        self::assertSame('CmsNorouteController#noroute', $attributes['http.route']);
     }
 
     public function testUsesTheConfiguredCorrelationHeader(): void

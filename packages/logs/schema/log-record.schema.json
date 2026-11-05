@@ -50,6 +50,12 @@
                 "magento.area": {"type": "string"},
                 "http.request.method": {"type": "string"},
                 "http.route": {"type": "string"},
+                "bode.magento.route_resolution": {"type": "string", "enum": ["noroute"]},
+                "bode.magento.action": {"type": "string"},
+                "bode.magento.controller_class": {
+                    "type": "string",
+                    "description": "The real controller/service class resolved for the request. Not code.namespace: that key already means the log call site."
+                },
                 "url.path": {"type": "string"},
                 "client.address": {"type": "string"},
                 "correlation.id": {"type": "string"},
