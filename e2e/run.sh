@@ -80,11 +80,17 @@ case "${1:-}" in
       "$OTEL_COLLECTOR_IMAGE" >/dev/null
 
     echo "waiting for MariaDB, OpenSearch, the Collector..."
-    wait_ready "MariaDB" 60 2 docker exec "$DB" healthcheck.sh --connect --innodb_initialized
+    wait_ready "MariaDB" 60 2 docker exec "$DB" healthcheck.sh --connect --innodb_initialized \
+      || { docker logs "$DB" 2>&1 | tail -n 50; exit 1; }
     wait_ready "OpenSearch" 60 2 docker run --rm --network "$NET" "$IMAGE" \
-      php -r 'exit(@file_get_contents("http://'"$SEARCH"':9200") ? 0 : 1);'
-    wait_ready "the Collector" 30 1 docker run --rm --network "$NET" "$IMAGE" \
-      php -r 'exit(@fsockopen("'"$COLLECTOR"'", 4318) ? 0 : 1);'
+      php -r 'exit(@file_get_contents("http://'"$SEARCH"':9200") ? 0 : 1);' \
+      || { docker logs "$SEARCH" 2>&1 | tail -n 50; exit 1; }
+    # 120s, not 30s: a cold image pull on a CI runner can leave otelcol-contrib slower to start accepting
+    # connections than on a warm local machine (observed: 30s was not enough in the first real CI run). If this
+    # still isn't ready in time, the dumped container log is the actual reason, not a guess.
+    wait_ready "the Collector" 60 2 docker run --rm --network "$NET" "$IMAGE" \
+      php -r 'exit(@fsockopen("'"$COLLECTOR"'", 4318) ? 0 : 1);' \
+      || { docker logs "$COLLECTOR" 2>&1 | tail -n 50; exit 1; }
     echo "ready"
     ;;
   install)
@@ -106,8 +112,9 @@ case "${1:-}" in
       -e MAGENTO_OTEL_IP_MODE=full -e MAGENTO_OTEL_CORRELATION_HEADERS=X-E2E-Run \
       -e MAGENTO_OTEL_LOGS_OUTPUT=file,stdout -e MAGENTO_OTEL_LOGS_ENABLED=true \
       "$IMAGE" php -S 0.0.0.0:8000 phpserver/router.php >/dev/null
-    wait_ready "the web server" 30 1 docker run --rm --network "$NET" "$IMAGE" \
-      php -r 'exit(@fsockopen("'"$WEB"'", 8000) ? 0 : 1);'
+    wait_ready "the web server" 60 1 docker run --rm --network "$NET" "$IMAGE" \
+      php -r 'exit(@fsockopen("'"$WEB"'", 8000) ? 0 : 1);' \
+      || { docker logs "$WEB" 2>&1 | tail -n 50; exit 1; }
     ;;
   web-down)
     docker rm -f "$WEB" >/dev/null 2>&1 || true
