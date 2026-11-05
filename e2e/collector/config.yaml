@@ -1,0 +1,29 @@
+# OTLP in, one JSON-lines file per signal out. A file exporter, not Tempo/Loki/Prometheus: assertions read an exact
+# file instead of polling a query API for ingestion to catch up, which keeps the e2e job deterministic and fast.
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+      grpc:
+        endpoint: 0.0.0.0:4317
+
+exporters:
+  file/traces:
+    path: /output/traces.jsonl
+  file/metrics:
+    path: /output/metrics.jsonl
+  file/logs:
+    path: /output/logs.jsonl
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [file/traces]
+    metrics:
+      receivers: [otlp]
+      exporters: [file/metrics]
+    logs:
+      receivers: [otlp]
+      exporters: [file/logs]

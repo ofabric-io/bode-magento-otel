@@ -55,6 +55,9 @@ bin/dev composer verify       # all three; this is what CI runs
 bin/dev bin/verify-install    # a throwaway project requires the packages the way a store does
 harness/run.sh up && harness/run.sh scenarios && harness/run.sh logs   # real extension, real Tempo
 harness/run.sh down
+bin/e2e up && bin/e2e install && bin/e2e web-up                        # real Magento 2.4.9, compiled DI, production mode
+bin/e2e scenario home && bin/e2e assert spans && bin/e2e assert di     # in progress: see e2e/run.sh for every command
+bin/e2e web-down && bin/e2e down
 ```
 
 `LGTM_PUBLISH="" harness/run.sh up` publishes no host ports (use it when 3000/3200/4318 are taken).
@@ -70,8 +73,9 @@ Rules that follow:
 
 1. **Climb the ladder to the lowest rung that can fail the way production fails.** Unit tests, then PHPStan, then
    `bin/verify-install`, then the harness (real extension, real SDK, Tempo), then a real Magento 2.4.9 in production mode
-   with compiled DI (the shop repository's `make telemetry` stack). Anything that touches `di.xml`, plugins, constructor
-   signatures, `registration.php` or a hook target **must** reach the last rung before you call it done.
+   with compiled DI (`bin/e2e`, or the CI workflow `.github/workflows/magento-e2e.yml` it mirrors). Anything that touches
+   `di.xml`, plugins, constructor signatures, `registration.php` or a hook target **must** reach the last rung before
+   you call it done.
 2. **Every bug fix ships a regression test that fails on the old code.** Run it against the unfixed code once to prove it.
 3. **Test the configuration that broke, not only the code.** `etc/di.xml` is code: parse it in a test (`DiConfigTest`).
 4. **Say what you did not verify.** PR bodies end with "Not covered:". "Probably works" is a finding, not a result.
