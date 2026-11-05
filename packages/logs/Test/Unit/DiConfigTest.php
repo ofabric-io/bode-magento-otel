@@ -12,8 +12,9 @@ use SimpleXMLElement;
  *
  * An argument declared in a module's di.xml replaces the argument of the same name in Magento's primary app/etc/di.xml
  * (arrays are merged between modules only, never with the primary file). The logger's "handlers" argument is defined
- * there with system, debug and syslog; declaring it here with only our own items once removed Magento's file handlers, so
- * nothing reached system.log or debug.log and the application logged into nothing, while every test still passed.
+ * there with system, debug and syslog; declaring it here with only our own items once removed Magento's file
+ * handlers, so nothing reached system.log or debug.log and the application logged into nothing, while every test
+ * still passed.
  */
 class DiConfigTest extends TestCase
 {
@@ -29,7 +30,7 @@ class DiConfigTest extends TestCase
             self::assertContains(
                 $default,
                 $items,
-                "Declaring the logger's handlers replaces Magento's list: the default '$default' handler must be repeated"
+                "Declaring the logger's handlers replaces Magento's list: repeat the default '$default' handler"
             );
         }
         foreach (['bode_stdout', 'bode_stderr'] as $ours) {
