@@ -274,6 +274,9 @@ class HttpInstrumentation implements InstrumentationInterface
                 $span->markError((string) $status);
             }
         }
+        foreach ($runtime->budget->summary() as $name => $value) {
+            $span->setAttribute($name, $value);
+        }
 
         // Hand the response to the client before the SDK flushes at shutdown: telemetry must never add latency.
         if (function_exists('fastcgi_finish_request')) {

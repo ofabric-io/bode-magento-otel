@@ -195,4 +195,21 @@ class InstrumenterTest extends TestCase
         self::assertSame(35, $this->budget->droppedTotal());
         self::assertSame(0, $this->stack->depth());
     }
+
+    public function testRefusedAndCollapsedSpansKeepHooksBalanced(): void
+    {
+        $this->budget = new SpanBudget(10, ['http' => 1], 1);
+        $starts = 0;
+        $this->instrumenter()->span('http', 'A', 'b', static function () use (&$starts): SpanHandleInterface {
+            $starts++;
+
+            return new FakeSpan();
+        });
+
+        for ($i = 0; $i < 3; $i++) {
+            $this->registrar->call('A', 'b');
+            self::assertSame(0, $this->stack->depth());
+        }
+        self::assertSame(1, $starts);
+    }
 }

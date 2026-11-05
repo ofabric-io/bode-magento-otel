@@ -70,6 +70,8 @@ class Instrumenter
                 array $params
             ) use (
                 $group,
+                $class,
+                $method,
                 $begin,
                 $rootOfUnit,
                 $mutate
@@ -88,7 +90,7 @@ class Instrumenter
                         $this->stack->push(null);
 
                         return null;
-                    } elseif (!$this->budget->tryAcquire()) {
+                    } elseif (!$this->budget->tryAcquire($group, $this->repeatKey($class, $method))) {
                         $this->stack->push(null);
 
                         return null;
@@ -130,8 +132,10 @@ class Instrumenter
                     return;
                 }
                 try {
-                    if ($rootOfUnit && $this->budget->dropped() > 0) {
-                        $handle->setAttribute('bode.magento.spans.dropped', $this->budget->dropped());
+                    if ($rootOfUnit) {
+                        foreach ($this->budget->summary() as $name => $value) {
+                            $handle->setAttribute($name, $value);
+                        }
                     }
                     if ($finish !== null) {
                         $finish($handle, $subject, $params, $returnValue, $exception);
@@ -230,5 +234,17 @@ class Instrumenter
     public function current(): ?SpanHandleInterface
     {
         return $this->stack->top();
+    }
+
+    /**
+     * Identity of "same span under same parent" for repeat collapsing.
+     *
+     * @param string $class
+     * @param string $method
+     * @return string
+     */
+    private function repeatKey(string $class, string $method): string
+    {
+        return $this->stack->currentSerial() . '|' . $class . '::' . $method;
     }
 }

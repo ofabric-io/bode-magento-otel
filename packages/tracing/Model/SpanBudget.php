@@ -23,12 +23,33 @@ class SpanBudget
      * @var int
      */
     private int $droppedTotal = 0;
+    /**
+     * @var int
+     */
+    private int $collapsed = 0;
+    /**
+     * @var array<string,int>
+     */
+    private array $groupUsed = [];
+    /**
+     * @var array<string,int>
+     */
+    private array $groupDropped = [];
+    /**
+     * @var array<string,int>
+     */
+    private array $siblings = [];
 
     /**
-     * @param int $cap
+     * @param int $cap global cap per unit of work
+     * @param array<string,int> $groupCaps group => cap; groups without an entry are bound by the global cap only
+     * @param int $collapseAfter 0 = off; N > 0 refuses sibling spans (same parent, same key) after the Nth
      */
-    public function __construct(private int $cap = Config::DEFAULT_SPAN_CAP)
-    {
+    public function __construct(
+        private int $cap = Config::DEFAULT_SPAN_CAP,
+        private readonly array $groupCaps = [],
+        private readonly int $collapseAfter = 0
+    ) {
     }
 
     /**
@@ -40,6 +61,10 @@ class SpanBudget
     {
         $this->used = 0;
         $this->dropped = 0;
+        $this->collapsed = 0;
+        $this->groupUsed = [];
+        $this->groupDropped = [];
+        $this->siblings = [];
     }
 
     /**
@@ -56,19 +81,82 @@ class SpanBudget
     /**
      * Ask for permission to start one more span.
      *
+     * Order: global cap, then group cap, then repeat collapsing. A refused span consumes nothing, so a noisy group
+     * cannot starve the others and a collapsed repeat does not eat global budget.
+     *
+     * @param string $group feature group of the hook ("" = no group accounting)
+     * @param string $repeatKey identifies "same span under the same parent" ("" = never collapse)
      * @return bool
      */
-    public function tryAcquire(): bool
+    public function tryAcquire(string $group = '', string $repeatKey = ''): bool
     {
         if ($this->used >= $this->cap) {
-            $this->dropped++;
-            $this->droppedTotal++;
+            return $this->refuse($group);
+        }
+        if (isset($this->groupCaps[$group]) && ($this->groupUsed[$group] ?? 0) >= $this->groupCaps[$group]) {
+            return $this->refuse($group);
+        }
+        if ($this->collapseAfter > 0 && $repeatKey !== '') {
+            $seen = $this->siblings[$repeatKey] ?? 0;
+            if ($seen >= $this->collapseAfter) {
+                $this->collapsed++;
 
-            return false;
+                return false;
+            }
+            $this->siblings[$repeatKey] = $seen + 1;
         }
         $this->used++;
+        $this->groupUsed[$group] = ($this->groupUsed[$group] ?? 0) + 1;
 
         return true;
+    }
+
+    /**
+     * Counts a refused span.
+     *
+     * @param string $group
+     * @return bool always false
+     */
+    private function refuse(string $group): bool
+    {
+        $this->dropped++;
+        $this->droppedTotal++;
+        if (isset($this->groupCaps[$group])) {
+            $this->groupDropped[$group] = ($this->groupDropped[$group] ?? 0) + 1;
+        }
+
+        return false;
+    }
+
+    /**
+     * Spans not started because of repeat collapsing in the current unit of work.
+     *
+     * @return int
+     */
+    public function collapsed(): int
+    {
+        return $this->collapsed;
+    }
+
+    /**
+     * Root-span attributes describing what volume control did; only groups with a configured cap appear.
+     *
+     * @return array<string,int>
+     */
+    public function summary(): array
+    {
+        $out = [];
+        if ($this->dropped > 0) {
+            $out['bode.magento.spans.dropped'] = $this->dropped;
+        }
+        if ($this->collapsed > 0) {
+            $out['bode.magento.spans.collapsed'] = $this->collapsed;
+        }
+        foreach ($this->groupDropped as $group => $count) {
+            $out['bode.magento.spans.dropped.' . $group] = $count;
+        }
+
+        return $out;
     }
 
     /**

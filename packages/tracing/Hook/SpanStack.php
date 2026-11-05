@@ -16,6 +16,14 @@ class SpanStack
      * @var array<int,SpanHandleInterface|null>
      */
     private array $entries = [];
+    /**
+     * @var int[] serial of each entry, parallel to $entries
+     */
+    private array $serials = [];
+    /**
+     * @var int
+     */
+    private int $nextSerial = 0;
 
     /**
      * Index in $entries of every open unit root (request, job, message, command), outermost first.
@@ -43,6 +51,7 @@ class SpanStack
     public function push(?SpanHandleInterface $handle): void
     {
         $this->entries[] = $handle;
+        $this->serials[] = ++$this->nextSerial;
     }
 
     /**
@@ -58,6 +67,7 @@ class SpanStack
         if ($this->roots !== [] && end($this->roots) === count($this->entries) - 1) {
             array_pop($this->roots);
         }
+        array_pop($this->serials);
 
         return array_pop($this->entries);
     }
@@ -74,6 +84,7 @@ class SpanStack
     {
         $this->roots[] = count($this->entries);
         $this->entries[] = $handle;
+        $this->serials[] = ++$this->nextSerial;
     }
 
     /**
@@ -103,6 +114,7 @@ class SpanStack
         $rootIndex = (int) end($this->roots);
         while (count($this->entries) - 1 > $rootIndex) {
             $entry = array_pop($this->entries);
+            array_pop($this->serials);
             if ($entry !== null) {
                 $leaked[] = $entry;
             }
@@ -143,6 +155,16 @@ class SpanStack
         $this->orphanedPending = 0;
 
         return $count;
+    }
+
+    /**
+     * Unique id of the innermost entry (parent of a span about to start), never reused in the process.
+     *
+     * @return int
+     */
+    public function currentSerial(): int
+    {
+        return $this->serials === [] ? 0 : $this->serials[count($this->serials) - 1];
     }
 
     /**
@@ -196,5 +218,6 @@ class SpanStack
     {
         $this->entries = [];
         $this->roots = [];
+        $this->serials = [];
     }
 }

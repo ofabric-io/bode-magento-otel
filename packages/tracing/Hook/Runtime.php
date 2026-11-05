@@ -67,7 +67,7 @@ class Runtime
         HookRegistrarInterface $registrar
     ) {
         $this->stack = new SpanStack();
-        $this->budget = new SpanBudget($config->spanCap());
+        $this->budget = new SpanBudget($config->spanCap(), $config->spanGroupCaps(), $config->spanCollapseAfter());
         $this->errors = new ErrorCounter(strtolower($env->get('MAGENTO_OTEL_DEBUG')) === 'true');
         $this->instrumenter = new Instrumenter($registrar, $config, $this->budget, $this->stack, $this->errors);
         $this->spans = new SpanStarter();

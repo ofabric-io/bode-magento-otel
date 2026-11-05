@@ -65,6 +65,8 @@ message bodies.
 | `MAGENTO_OTEL_TRACING_GROUPS` | `http,cron,cli,indexer,cache,queue,outbound` | Groups on. `all` enables every group, `-name` subtracts from the defaults, `http,sql` is an explicit list. Aliases: `eav` and `business` (deprecated) = `entities`; `data` = `entities,sql,redis`; aliases work with `-` and `all`. Unknown names are ignored |
 | `MAGENTO_OTEL_EXCLUDED_PATHS` | `health_check.php,/health,/static/,/media/,cron.php,get.php` | Request path fragments that are never traced |
 | `MAGENTO_OTEL_SPAN_CAP` | `500` | Spans per request, cron job or queue message; the rest are counted as dropped, and the counter resets for the next unit of work |
+| `MAGENTO_OTEL_SPAN_CAP_GROUPS` | none | Per-group caps inside the global cap, e.g. `entities:150,sql:200,events:100`. Invalid entries are ignored; groups without an entry are bound only by `MAGENTO_OTEL_SPAN_CAP`. No defaults until real span-volume data exists |
+| `MAGENTO_OTEL_SPAN_COLLAPSE_AFTER` | `0` (off) | `N>0`: after N spans from the same hook under the same parent span, further ones are not started and are counted as collapsed |
 | `MAGENTO_OTEL_IP_MODE` | `truncate` | `full`, `truncate` (/24, /48), `hash`, `off` |
 | `MAGENTO_OTEL_USER_MODE` | `id` | `id`, `hash`, `off` (never e-mail or name) |
 | `MAGENTO_OTEL_HASH_SECRET` | none | Secret for the keyed hashes (session id, and IP/user in `hash` mode); without it they record nothing |
@@ -123,3 +125,14 @@ links a line to its trace in Grafana.
 
 `composer test` in the monorepo root (also run in CI: the unit tests need no Magento). `harness/` in the monorepo
 runs every scenario end to end with the real extension against Tempo.
+
+## Span volume
+
+Three controls keep one noisy page from using the whole budget, checked in this order for every span: the global
+`MAGENTO_OTEL_SPAN_CAP`, the group cap (`..._SPAN_CAP_GROUPS`), then repeat collapsing (`..._SPAN_COLLAPSE_AFTER`).
+A refused span consumes nothing, the hook pair stays balanced (a null placeholder is pushed and popped), and the
+counters reset at every unit of work. "Same span" for collapsing means the same hooked class and method under the same
+parent span (the span name is only known after it is started). The root span gets `bode.magento.spans.dropped`,
+`bode.magento.spans.collapsed` and, only for groups that have a configured cap, `bode.magento.spans.dropped.<group>`
+(non-zero values only). A `repeat_count` attribute on the first sibling is not emitted: that span has usually ended
+before the repeats occur. Roots of other kinds can write the same attributes from `SpanBudget::summary()`.

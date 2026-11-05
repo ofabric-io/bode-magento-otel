@@ -114,4 +114,76 @@ class ConfigAndBudgetTest extends TestCase
         self::assertSame(20, $this->config(['MAGENTO_OTEL_SPAN_CAP' => '20'])->spanCap());
         self::assertSame(500, $this->config(['MAGENTO_OTEL_SPAN_CAP' => 'lots'])->spanCap());
     }
+
+    public function testNoisyGroupCannotStarveOthers(): void
+    {
+        $budget = new SpanBudget(10, ['entities' => 2]);
+
+        self::assertTrue($budget->tryAcquire('entities'));
+        self::assertTrue($budget->tryAcquire('entities'));
+        self::assertFalse($budget->tryAcquire('entities'));
+        self::assertTrue($budget->tryAcquire('sql'));
+        self::assertSame(2, $budget->used() - 1);
+        self::assertSame(
+            ['bode.magento.spans.dropped' => 1, 'bode.magento.spans.dropped.entities' => 1],
+            $budget->summary()
+        );
+    }
+
+    public function testGlobalCapStillWinsOverGroupCap(): void
+    {
+        $budget = new SpanBudget(2, ['sql' => 5]);
+
+        self::assertTrue($budget->tryAcquire('sql'));
+        self::assertTrue($budget->tryAcquire('events'));
+        self::assertFalse($budget->tryAcquire('sql'));
+        // Unconfigured group: no per-group attribute (bounded output), global drop only.
+        self::assertSame(
+            ['bode.magento.spans.dropped' => 1, 'bode.magento.spans.dropped.sql' => 1],
+            $budget->summary()
+        );
+        self::assertFalse($budget->tryAcquire('events'));
+        self::assertArrayNotHasKey('bode.magento.spans.dropped.events', $budget->summary());
+    }
+
+    public function testCollapseAfterThresholdPerParentAndKey(): void
+    {
+        $budget = new SpanBudget(100, [], 2);
+
+        self::assertTrue($budget->tryAcquire('sql', '1|A::b'));
+        self::assertTrue($budget->tryAcquire('sql', '1|A::b'));
+        self::assertFalse($budget->tryAcquire('sql', '1|A::b'));
+        self::assertTrue($budget->tryAcquire('sql', '2|A::b'));
+        self::assertTrue($budget->tryAcquire('sql', '1|C::d'));
+        self::assertSame(1, $budget->collapsed());
+        self::assertSame(0, $budget->dropped());
+        self::assertSame(4, $budget->used());
+        self::assertSame(['bode.magento.spans.collapsed' => 1], $budget->summary());
+
+        $budget->reset();
+        self::assertSame(0, $budget->collapsed());
+        self::assertTrue($budget->tryAcquire('sql', '1|A::b'));
+    }
+
+    public function testCollapseOffByDefault(): void
+    {
+        $budget = new SpanBudget(100);
+        for ($i = 0; $i < 20; $i++) {
+            self::assertTrue($budget->tryAcquire('sql', '1|A::b'));
+        }
+    }
+
+    public function testGroupCapsAndCollapseParsing(): void
+    {
+        $config = $this->config([
+            'MAGENTO_OTEL_SPAN_CAP_GROUPS' => 'entities:150, sql:200,bad,x:-1,y:abc,z:0,a:1:2,:5',
+            'MAGENTO_OTEL_SPAN_COLLAPSE_AFTER' => '5',
+        ]);
+        self::assertSame(['entities' => 150, 'sql' => 200], $config->spanGroupCaps());
+        self::assertSame(5, $config->spanCollapseAfter());
+        self::assertSame([], $this->config()->spanGroupCaps());
+        self::assertSame(0, $this->config()->spanCollapseAfter());
+        self::assertSame(0, $this->config(['MAGENTO_OTEL_SPAN_COLLAPSE_AFTER' => '-3'])->spanCollapseAfter());
+        self::assertSame(0, $this->config(['MAGENTO_OTEL_SPAN_COLLAPSE_AFTER' => 'x'])->spanCollapseAfter());
+    }
 }
