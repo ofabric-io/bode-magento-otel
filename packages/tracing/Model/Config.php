@@ -13,6 +13,8 @@ use Bode\Tracing\Api\InstrumentationGuardInterface;
  *                              subtract from the defaults (-cache); "all" switches every group on.
  * MAGENTO_OTEL_EXCLUDED_PATHS  comma separated path fragments never traced (default: DEFAULT_EXCLUDED)
  * MAGENTO_OTEL_SPAN_CAP        maximum spans per trace, cron job or queue message (default 500)
+ * MAGENTO_OTEL_SPAN_CAP_GROUPS  per-group caps, "entities:150,sql:200"; invalid entries ignored; none by default
+ * MAGENTO_OTEL_SPAN_COLLAPSE_AFTER  0 (default) = off; N > 0 stops starting repeated sibling spans after N
  * MAGENTO_OTEL_ENABLED         "false" disables everything
  */
 class Config implements InstrumentationGuardInterface
@@ -84,6 +86,38 @@ class Config implements InstrumentationGuardInterface
     public function spanCap(): int
     {
         return max(1, $this->env->int('MAGENTO_OTEL_SPAN_CAP', self::DEFAULT_SPAN_CAP));
+    }
+
+    /**
+     * Per-group span caps.
+     *
+     * @return array<string,int>
+     */
+    public function spanGroupCaps(): array
+    {
+        $caps = [];
+        foreach ($this->env->list('MAGENTO_OTEL_SPAN_CAP_GROUPS') as $item) {
+            $parts = explode(':', $item);
+            if (count($parts) !== 2 || !preg_match('/^[a-z_]+$/', $parts[0]) || !ctype_digit($parts[1])) {
+                continue;
+            }
+            $cap = (int) $parts[1];
+            if ($cap > 0) {
+                $caps[$parts[0]] = $cap;
+            }
+        }
+
+        return $caps;
+    }
+
+    /**
+     * Repeat collapse threshold, 0 = off.
+     *
+     * @return int
+     */
+    public function spanCollapseAfter(): int
+    {
+        return max(0, $this->env->int('MAGENTO_OTEL_SPAN_COLLAPSE_AFTER', 0));
     }
 
     /**

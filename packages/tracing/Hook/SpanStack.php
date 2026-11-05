@@ -16,6 +16,14 @@ class SpanStack
      * @var array<int,SpanHandleInterface|null>
      */
     private array $entries = [];
+    /**
+     * @var int[] serial of each entry, parallel to $entries
+     */
+    private array $serials = [];
+    /**
+     * @var int
+     */
+    private int $nextSerial = 0;
 
     /**
      * Pushes the entry of a pre hook.
@@ -26,6 +34,7 @@ class SpanStack
     public function push(?SpanHandleInterface $handle): void
     {
         $this->entries[] = $handle;
+        $this->serials[] = ++$this->nextSerial;
     }
 
     /**
@@ -35,7 +44,22 @@ class SpanStack
      */
     public function pop(): ?SpanHandleInterface
     {
-        return $this->entries === [] ? null : array_pop($this->entries);
+        if ($this->entries === []) {
+            return null;
+        }
+        array_pop($this->serials);
+
+        return array_pop($this->entries);
+    }
+
+    /**
+     * Unique id of the innermost entry (parent of a span about to start), never reused in the process.
+     *
+     * @return int
+     */
+    public function currentSerial(): int
+    {
+        return $this->serials === [] ? 0 : $this->serials[count($this->serials) - 1];
     }
 
     /**
@@ -88,5 +112,6 @@ class SpanStack
     public function clear(): void
     {
         $this->entries = [];
+        $this->serials = [];
     }
 }

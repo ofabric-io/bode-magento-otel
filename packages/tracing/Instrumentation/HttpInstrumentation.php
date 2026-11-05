@@ -273,8 +273,8 @@ class HttpInstrumentation implements InstrumentationInterface
                 $span->markError((string) $status);
             }
         }
-        if ($runtime->budget->dropped() > 0) {
-            $span->setAttribute('bode.magento.spans.dropped', $runtime->budget->dropped());
+        foreach ($runtime->budget->summary() as $name => $value) {
+            $span->setAttribute($name, $value);
         }
 
         // Hand the response to the client before the SDK flushes at shutdown: telemetry must never add latency.
