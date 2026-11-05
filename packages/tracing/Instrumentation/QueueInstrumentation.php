@@ -30,7 +30,7 @@ class QueueInstrumentation implements InstrumentationInterface
                 $topic = $this->topic($params[0] ?? null);
                 $consumer = $this->consumerName($subject);
 
-                return $runtime->spans->start(
+                return $runtime->spans->startUnit(
                     'queue ' . $topic,
                     SpanKind::KIND_CONSUMER,
                     [

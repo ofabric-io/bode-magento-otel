@@ -30,6 +30,18 @@ class TelemetryState implements TelemetryStateInterface
     }
 
     /**
+     * Spans not started because no unit of work was open.
+     *
+     * Not on the shared interface: adding a method there would break implementers.
+     *
+     * @return int
+     */
+    public function orphanedSpans(): int
+    {
+        return Runtime::get()?->stack->orphanedTotal() ?? 0;
+    }
+
+    /**
      * @inheritdoc
      */
     public function swallowedErrors(): array

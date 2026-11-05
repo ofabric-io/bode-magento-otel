@@ -38,7 +38,7 @@ class CliInstrumentation implements InstrumentationInterface
                 }
                 $name = substr((string) preg_replace('/[^A-Za-z0-9_.:-]/', '', $name), 0, 100);
 
-                return $runtime->spans->start(
+                return $runtime->spans->startUnit(
                     'cli ' . $name,
                     SpanKind::KIND_INTERNAL,
                     ['bode.magento.cli.command' => $name]

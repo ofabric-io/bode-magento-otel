@@ -46,6 +46,51 @@ class HttpInstrumentationTest extends TestCase
         (new HttpInstrumentation())->register($this->runtime);
     }
 
+    public function testAnExcludedPathSuppressesEveryDescendantSpan(): void
+    {
+        $registrar = new FakeRegistrar();
+        $env = new Environment(['MAGENTO_OTEL_ASSUME_WEB' => 'true', 'MAGENTO_OTEL_EXCLUDED_PATHS' => '/health']);
+        $runtime = new Runtime(new Config($env, true), $env, $registrar);
+        (new HttpInstrumentation())->register($runtime);
+        $childStarted = 0;
+        $runtime->instrumenter->span(
+            'http',
+            'Child',
+            'run',
+            static function () use (&$childStarted): FakeSpan {
+                $childStarted++;
+
+                return new FakeSpan();
+            }
+        );
+
+        $_SERVER['REQUEST_URI'] = '/health';
+        $registrar->callNested(\Magento\Framework\App\Bootstrap::class . '::run', 'Child::run', 2);
+        unset($_SERVER['REQUEST_URI']);
+
+        self::assertSame(0, $childStarted, 'no stray trace per child of an excluded request');
+        self::assertSame(2, $runtime->stack->orphanedTotal());
+        self::assertSame(0, $runtime->stack->depth());
+    }
+
+    public function testRequestKeepsTheIncomingTraceparentAsItsParent(): void
+    {
+        $registrar = new FakeRegistrar();
+        $env = new Environment(['MAGENTO_OTEL_ASSUME_WEB' => 'true']);
+        $runtime = new Runtime(new Config($env, true), $env, $registrar);
+        (new HttpInstrumentation())->register($runtime);
+        $_SERVER['REQUEST_URI'] = '/checkout/cart';
+        $_SERVER['HTTP_TRACEPARENT'] = '00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01';
+
+        ($registrar->hooks[\Magento\Framework\App\Bootstrap::class . '::run']['pre'])(null, []);
+        $traceId = \OpenTelemetry\API\Trace\Span::getCurrent()->getContext()->getTraceId();
+        ($registrar->hooks[\Magento\Framework\App\Bootstrap::class . '::run']['post'])(null, [], null, null);
+        unset($_SERVER['REQUEST_URI'], $_SERVER['HTTP_TRACEPARENT']);
+
+        self::assertSame('0af7651916cd43dd8448eb211c80319c', $traceId);
+        self::assertSame(0, $runtime->stack->depth());
+    }
+
     public function testPageCacheHitIsNamedAfterABestEffortPathTemplateNotASentinel(): void
     {
         $_SERVER['REQUEST_URI'] = '/catalog/category/view/id/42';

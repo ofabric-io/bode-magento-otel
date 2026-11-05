@@ -105,6 +105,14 @@ links a line to its trace in Grafana.
   group switch and the per-unit `SpanBudget`, keeps pre and post balanced with a `SpanStack` (a post hook never ends a
   span that is not its own), and catches, counts and swallows every failure (`ErrorCounter`, visible as
   `bode.telemetry.errors` in `Bode_Metrics`, logged with `MAGENTO_OTEL_DEBUG=true`).
+- **One trace per unit of work.** Only an HTTP request, a cron job, a queue message and a CLI command are roots
+  (`rootOfUnit`); they start from an empty context (a job run inside an open span is a new trace, not its child), except
+  a request, which keeps an incoming `traceparent`. Every other span (events, SQL, Redis, entities, outbound HTTP, cache,
+  indexers...) is child-only: with no open root (an excluded path, code outside any unit) it is not started, never
+  becomes a fragment trace, and is counted. The count is reported as `bode.magento.spans.orphaned` on the next root
+  (spans dropped since the previous unit ended) and is readable in code as `Model\TelemetryState::orphanedSpans()`.
+  `bode.magento.spans.dropped` (per-unit span cap) is now set on every kind of root, not only HTTP. Spans left open by a
+  missing post hook are ended when their root ends.
 - Code that needs dependency injection (sessions, store, admin user) cannot live in a static hook: the
   `Plugin\EnrichRequestSpan` after-plugin and the `Observer\AdminAudit` observer reach the current span through
   `Api\TelemetryStateInterface`.

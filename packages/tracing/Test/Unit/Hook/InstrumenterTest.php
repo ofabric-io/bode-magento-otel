@@ -91,7 +91,8 @@ class InstrumenterTest extends TestCase
             static fn (): SpanHandleInterface => $span,
             static function (SpanHandleInterface $s): void {
                 $s->setAttribute('done', true);
-            }
+            },
+            true
         );
 
         $this->registrar->call('A', 'b');
@@ -104,7 +105,7 @@ class InstrumenterTest extends TestCase
     public function testExceptionIsRecordedOnTheSpan(): void
     {
         $span = new FakeSpan();
-        $this->instrumenter()->span('http', 'A', 'b', static fn (): SpanHandleInterface => $span);
+        $this->instrumenter()->span('http', 'A', 'b', static fn (): SpanHandleInterface => $span, null, true);
 
         $this->registrar->call('A', 'b', new RuntimeException('secret message'));
 
@@ -122,15 +123,17 @@ class InstrumenterTest extends TestCase
         });
 
         // Four nested calls with a budget of three: the fourth starts no span but must still balance.
+        $this->stack->pushRoot(new FakeSpan());
         $hook = $this->registrar->hooks['A::b'];
         for ($i = 0; $i < 4; $i++) {
             ($hook['pre'])(null, []);
         }
         self::assertCount(3, $started);
-        self::assertSame(4, $this->stack->depth());
+        self::assertSame(5, $this->stack->depth());
         for ($i = 0; $i < 4; $i++) {
             ($hook['post'])(null, [], null, null);
         }
+        $this->stack->pop();
 
         self::assertSame(0, $this->stack->depth());
         foreach ($started as $span) {
@@ -143,7 +146,7 @@ class InstrumenterTest extends TestCase
     {
         $this->instrumenter()->span('http', 'A', 'b', static function (): never {
             throw new RuntimeException('boom');
-        });
+        }, null, true);
 
         $this->registrar->call('A', 'b');
 
@@ -161,7 +164,8 @@ class InstrumenterTest extends TestCase
             static fn (): SpanHandleInterface => $span,
             static function (): never {
                 throw new RuntimeException('boom');
-            }
+            },
+            true
         );
 
         $this->registrar->call('A', 'b');
