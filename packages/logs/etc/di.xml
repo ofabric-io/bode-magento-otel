@@ -28,8 +28,17 @@
                     Bode\Logs\Model\Processor\StructuredContextProcessor
                 </item>
             </argument>
-            <!-- stdout and stderr for containers: silent unless MAGENTO_OTEL_LOGS_OUTPUT names them. -->
+            <!-- stdout and stderr for containers: silent unless MAGENTO_OTEL_LOGS_OUTPUT names them.
+
+                 An argument declared in a module's di.xml REPLACES the one of the same name in Magento's primary
+                 app/etc/di.xml, it is not merged into it (arrays are only merged between modules). Declaring
+                 "handlers" here with just our two items therefore removed Magento's own file handlers, and with them
+                 system.log and debug.log: the application logged into nothing. The three defaults of app/etc/di.xml
+                 are repeated so they stay. Keep them identical to Magento's; a test fails when one is missing. -->
             <argument name="handlers" xsi:type="array">
+                <item name="system" xsi:type="object">Magento\Framework\Logger\Handler\System</item>
+                <item name="debug" xsi:type="object">Magento\Framework\Logger\Handler\Debug</item>
+                <item name="syslog" xsi:type="object">Magento\Framework\Logger\Handler\Syslog</item>
                 <item name="bode_stdout" xsi:type="object">Bode\Logs\Model\Handler\Stdout</item>
                 <item name="bode_stderr" xsi:type="object">Bode\Logs\Model\Handler\Stderr</item>
             </argument>

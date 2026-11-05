@@ -125,6 +125,7 @@ loki.process "magento" {
   long-running consumer does not carry one request's facts into the next).
 - `Model\ValueNormalizer` and `Model\ExceptionNormalizer` bound and clean what goes into a line.
 - Plugins are in `Plugin/`, wiring in `etc/di.xml`.
+- A module's `di.xml` argument **replaces** the same argument of Magento's primary `app/etc/di.xml` (arrays merge only between modules). The logger's `handlers` there lists `system`, `debug` and `syslog`, so `etc/di.xml` repeats them next to our two stream handlers; leaving them out silences `system.log` and `debug.log` (`DiConfigTest` guards this).
 
 ## Tests
 
