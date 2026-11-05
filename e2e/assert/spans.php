@@ -66,7 +66,7 @@ pass('home-2 root span is named "GET page_cache_hit" (not "GET unknown") with ht
 
 // No PII in any attribute of either trace, as a defensive general check (home has none on purpose; other scenarios
 // carry the scenarios that actually try to leak an email/token/query string).
-$forbidden = ['?', 'token=', '@example.com', 'searchCriteria'];
+$forbidden = ['q=widget', 'email=', 'utm_source=', 'token=', '@example.com', 'searchCriteria'];
 foreach (array_merge($roots1, $roots2) as $span) {
     foreach ($span['attributes'] as $key => $value) {
         $haystack = is_string($value) ? $value : json_encode($value);

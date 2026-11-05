@@ -12,7 +12,9 @@
 #   bin/e2e all        up, install, web-up, every scenario, every assertion, down
 #   bin/e2e web-down / bin/e2e down
 #
-# Needs only Docker. Installed Magento lives in e2e/.magento (gitignored) so it can be cached by path in CI.
+# Needs only Docker. Installed Magento lives in e2e/.magento and the composer cache in e2e/.composer-cache
+# (both gitignored) when MAGENTO_MOUNT/COMPOSER_CACHE_MOUNT are overridden to those host paths, so CI can cache both by
+# path with actions/cache; locally they default to named Docker volumes instead (bind-mounting is slow on Windows).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 export MSYS_NO_PATHCONV=1
@@ -31,12 +33,16 @@ OTEL_COLLECTOR_IMAGE=${OTEL_COLLECTOR_IMAGE:-otel/opentelemetry-collector-contri
 # this one variable chooses both: a named volume by default (bind-mounting the Magento tree is very slow on Windows,
 # per AGENTS.md), overridable to a host path in CI so actions/cache and upload-artifact can address it directly.
 MAGENTO_MOUNT=${MAGENTO_MOUNT:-bode-e2e-magento}
+# Same pattern as MAGENTO_MOUNT, for the composer cache: a named volume locally, overridable to a host path in CI so
+# actions/cache can key it by hash (Magento version, PHP/extension versions, packages/*/composer.json content).
+COMPOSER_CACHE_MOUNT=${COMPOSER_CACHE_MOUNT:-bode-e2e-composer-cache}
 
 case "${1:-}" in
   up)
     docker network inspect "$NET" >/dev/null 2>&1 || docker network create "$NET" >/dev/null
     mkdir -p "$OUTPUT_DIR"
-    docker volume inspect bode-e2e-composer-cache >/dev/null 2>&1 || docker volume create bode-e2e-composer-cache >/dev/null
+    # No explicit volume/dir creation for COMPOSER_CACHE_MOUNT: like MAGENTO_MOUNT, `docker run -v` creates a missing
+    # named volume on demand, and a missing host-path directory too - same implicit behaviour, so no branching here.
     docker image inspect "$IMAGE" >/dev/null 2>&1 || docker build -q -t "$IMAGE" docker/php >/dev/null
 
     docker rm -f "$DB" "$SEARCH" "$COLLECTOR" >/dev/null 2>&1 || true
@@ -62,7 +68,7 @@ case "${1:-}" in
     # Clear through a container, not the host shell: MAGENTO_MOUNT may be a named volume, which has no host path to rm.
     docker run --rm -v "$MAGENTO_MOUNT:/magento" "$IMAGE" sh -c 'rm -rf /magento/* /magento/.??* 2>/dev/null || true'
     docker run --rm --network "$NET" -v "$MAGENTO_MOUNT:/magento" -v "$PWD:/repo:ro" \
-      -v bode-e2e-composer-cache:/root/.composer/cache -w /magento \
+      -v "$COMPOSER_CACHE_MOUNT:/root/.composer/cache" -w /magento \
       -e DB_HOST="$DB" -e SEARCH_HOST="$SEARCH" \
       "$IMAGE" bash /repo/e2e/install.sh
     ;;
@@ -85,13 +91,36 @@ case "${1:-}" in
     ;;
   scenario)
     shift
+    # Full OTel env, not just WEB_HOST/WEB_PORT: HTTP scenarios (httpGet/httpPost) only need WEB_HOST, since tracing
+    # happens server-side in the already-configured $WEB container - but CLI scenarios run `bin/magento`/trigger
+    # scripts *inside this container* (magento()/runScript()/runTrigger() in e2e/scenarios/run.php), inheriting
+    # whatever env this docker run sets. Without it, the OTel SDK falls back to its spec default
+    # (http://localhost:4318), unreachable from here since the Collector is a separate container - CLI scenarios
+    # would silently produce no telemetry at all. Keep this block identical to web-up's.
     docker run --rm --network "$NET" -v "$MAGENTO_MOUNT:/magento" -v "$PWD/e2e:/e2e:ro" -w /magento \
       -e WEB_HOST="$WEB" -e WEB_PORT=8000 \
+      -e OTEL_PHP_AUTOLOAD_ENABLED=true -e OTEL_SERVICE_NAME=bode-e2e \
+      -e OTEL_TRACES_EXPORTER=otlp -e OTEL_METRICS_EXPORTER=otlp -e OTEL_LOGS_EXPORTER=none \
+      -e OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf -e "OTEL_EXPORTER_OTLP_ENDPOINT=http://$COLLECTOR:4318" \
+      -e OTEL_METRICS_EXPORT_INTERVAL=1000 -e OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE=delta \
+      -e MAGENTO_OTEL_TRACING_GROUPS=http,cron,cli,indexer,cache,queue,outbound \
+      -e MAGENTO_OTEL_IP_MODE=full -e MAGENTO_OTEL_CORRELATION_HEADERS=X-E2E-Run \
+      -e MAGENTO_OTEL_LOGS_OUTPUT=file,stdout -e MAGENTO_OTEL_LOGS_ENABLED=true \
       "$IMAGE" php /e2e/scenarios/run.php "$@"
     ;;
   assert)
     shift
-    docker run --rm --network "$NET" -v "$MAGENTO_MOUNT:/magento:ro" -v "$OUTPUT_DIR:/output:ro" \
+    # disabled-mode needs a writable /magento: it runs real `bin/magento` subprocesses to compare telemetry-on vs
+    # disabled, and a read-only mount silently breaks span export for those (verified, not assumed: identical
+    # command, same env, same network - only the mount's read-only flag differed between a run that exported spans
+    # and one that exported none; likely something in the OTel SDK/hook path needs write access under BP that a
+    # pure read, no-CLI-subprocess script like spans.php/di.php/metrics.php/logs.php never touches). Every other
+    # assertion only reads var/log and bootstraps in-process, so they keep the read-only guarantee.
+    MOUNT_FLAG=":ro"
+    if [ "${1:-}" = "disabled-mode" ]; then
+      MOUNT_FLAG=""
+    fi
+    docker run --rm --network "$NET" -v "$MAGENTO_MOUNT:/magento$MOUNT_FLAG" -v "$OUTPUT_DIR:/output:ro" \
       -v "$PWD/e2e:/e2e:ro" -v "$PWD/packages:/packages:ro" -w /magento \
       "$IMAGE" php "/e2e/assert/$1.php" "${@:2}"
     ;;

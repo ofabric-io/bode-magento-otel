@@ -1,0 +1,154 @@
+name: Magento E2E
+
+# Real Magento 2.4.9, compiled production-mode DI, the real ext-opentelemetry extension, a real OTel Collector: the
+# last rung of the verification ladder (AGENTS.md section 4). Mirrors e2e/run.sh exactly, so a failure here
+# reproduces locally with `bin/e2e up && bin/e2e install && ...` using the same subcommands below.
+#
+# NOT a required status check yet. This workflow is new and has not yet proven stable across many runs (real
+# Magento installs against a remote mirror, real Docker networking, timing-sensitive readiness waits - more moving
+# parts than ci.yml, more ways to be flaky for reasons that have nothing to do with the PR under test). Once this
+# has been green for a while, the maintainer should add it to branch protection by hand (AGENTS.md section 9: out of
+# scope for an agent to change repository settings).
+
+on:
+  pull_request:
+    paths:
+      - "packages/**"
+      - "e2e/**"
+      - "bin/e2e"
+      - "docker/php/**"
+      - ".github/workflows/magento-e2e.yml"
+  push:
+    branches: [main]
+    paths:
+      - "packages/**"
+      - "e2e/**"
+      - "bin/e2e"
+      - "docker/php/**"
+      - ".github/workflows/magento-e2e.yml"
+  schedule:
+    # 03:17 UTC, off-peak for both US and EU working hours. Nightly so a Mage-OS mirror change or an upstream
+    # Magento/OTel release breaking the install is caught even on a week with no PR touching packages/** or e2e/**
+    # (AGENTS.md section 4: climb the ladder to the rung that fails the way production fails - a drifted mirror is
+    # exactly that kind of failure, and it will not wait for a PR to reveal itself).
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: magento-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # Mirrors e2e/run.sh: MAGENTO_MOUNT/COMPOSER_CACHE_MOUNT default to named Docker volumes locally; here they are set
+  # to host paths instead. MAGENTO_MOUNT as a host path is what lets the failure-artifact upload step below address
+  # var/log and generated/metadata directly; it is not cached across runs (see the comment above the cache steps).
+  # COMPOSER_CACHE_MOUNT as a host path is what lets actions/cache restore and save the composer package cache.
+  MAGENTO_MOUNT: ${{ github.workspace }}/e2e/.magento
+  COMPOSER_CACHE_MOUNT: ${{ github.workspace }}/e2e/.composer-cache
+
+jobs:
+  e2e:
+    name: Magento E2E / real Magento, compiled DI, real telemetry
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      # Builds e2e/run.sh's bode-otel-dev image ahead of time so `bin/e2e up` finds it already present (its
+      # `docker image inspect` check short-circuits the build) and layers are cached across runs through the GitHub
+      # Actions cache backend, same image as bin/dev and harness/ use (docker/php/Dockerfile).
+      - name: Build the bode-otel-dev image (cached)
+        uses: docker/build-push-action@v6
+        with:
+          context: docker/php
+          tags: bode-otel-dev:latest
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Cache strategy and its limits:
+      #   - Only the Composer package cache is cached here, not the installed Magento tree itself. e2e/run.sh's
+      #     `install` subcommand always wipes and reinstalls /magento from scratch on purpose (safe, correct local
+      #     iteration), so a cached *installed* tree would be silently discarded before it could help - and if that
+      #     wipe were removed to make use of it instead, a tree cached from a previous run's packages/* code could
+      #     mask a real DI-compile regression in *this* PR, since setup:install also cannot safely re-run against an
+      #     already-installed app/etc/env.php paired with this run's fresh, empty database. Caching the installed
+      #     tree correctly would need splitting the install into a cacheable "download vanilla Magento" phase and an
+      #     always-fresh "require packages/*, setup:install, compile" phase - left as a follow-up, not implemented
+      #     here, rather than shipped with that correctness risk unverified.
+      #   - MAGENTO_VERSION pins the Magento release (read out of e2e/install.sh's default so this key can never
+      #     silently drift from what the script actually installs).
+      #   - hashFiles(docker/php/Dockerfile) busts the cache when the PHP/extension versions change (a new PHP or
+      #     ext-opentelemetry build can change compiled DI output or behaviour).
+      #   - hashFiles(packages/*/composer.json) busts the cache when the packages' own dependency requirements
+      #     change (a new open-telemetry/* constraint needs a fresh `composer require`, not a stale vendor/ tree).
+      #   - the literal `mirror1` segment is a manually-bumped cache-busting suffix, not a true lock file: the
+      #     Mage-OS mirror is a remote composer repository with no local lock file to hash, so there is no way to
+      #     detect "the mirror's content changed" automatically. If a run fails only because of a stale cached
+      #     composer package cache against a moved/changed mirror, bump this literal (mirror1 -> mirror2, ...) in a
+      #     PR to force a clean download on the next run; this is a known, accepted gap, not a fix.
+      - name: Compute cache key inputs
+        id: cache-inputs
+        run: |
+          MAGENTO_VERSION=$(grep -oP "MAGENTO_VERSION:-\K[0-9.]+" e2e/install.sh)
+          echo "magento-version=$MAGENTO_VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Restore the composer cache
+        uses: actions/cache@v4
+        with:
+          path: e2e/.composer-cache
+          key: >-
+            magento-e2e-composer-${{ runner.os }}-${{ steps.cache-inputs.outputs.magento-version }}-mirror1-${{
+            hashFiles('docker/php/Dockerfile') }}-${{ hashFiles('packages/*/composer.json') }}
+          restore-keys: |
+            magento-e2e-composer-${{ runner.os }}-${{ steps.cache-inputs.outputs.magento-version }}-mirror1-${{ hashFiles('docker/php/Dockerfile') }}-
+            magento-e2e-composer-${{ runner.os }}-${{ steps.cache-inputs.outputs.magento-version }}-mirror1-
+            magento-e2e-composer-${{ runner.os }}-
+
+      - name: bin/e2e up
+        run: bin/e2e up
+
+      - name: bin/e2e install
+        run: bin/e2e install
+
+      - name: bin/e2e web-up
+        run: bin/e2e web-up
+
+      # actions/cache saves on post-job (success only, by default) with the key computed above, so no separate
+      # "save" step is needed here - it runs automatically after this job finishes, provided the key did not already
+      # exist in the cache. See https://github.com/actions/cache#about-cache-scopes for the exact save semantics.
+      - name: Run every scenario
+        run: |
+          for scenario in home search not-found rest graphql admin-login admin-save cache-status indexer cron-ok cron-fail queue uncaught fatal; do
+            bin/e2e scenario "$scenario"
+          done
+
+      - name: Run every assertion
+        run: |
+          for assertion in spans di metrics logs disabled-mode; do
+            bin/e2e assert "$assertion"
+          done
+
+      - name: Upload failure artifacts (Collector output, Magento logs and compiled DI metadata)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: magento-e2e-failure-${{ github.run_id }}
+          retention-days: 7
+          if-no-files-found: ignore
+          path: |
+            e2e/.output/**
+            e2e/.magento/var/log/**
+            e2e/.magento/generated/metadata/**
+
+      - name: bin/e2e web-down
+        if: always()
+        run: bin/e2e web-down
+
+      - name: bin/e2e down
+        if: always()
+        run: bin/e2e down
