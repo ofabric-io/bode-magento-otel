@@ -60,6 +60,13 @@ case "${1:-}" in
   up)
     docker network inspect "$NET" >/dev/null 2>&1 || docker network create "$NET" >/dev/null
     mkdir -p "$OUTPUT_DIR"
+    # World-writable: the Collector image runs its process as its own non-root UID, which does not match whatever
+    # UID created this directory (the GitHub Actions runner's own user in CI, a different one again locally).
+    # Windows Docker Desktop does not enforce host/container UID matching on bind mounts the way Linux does, so this
+    # went unnoticed until the first real CI run failed with "open /output/traces.jsonl: permission denied". This
+    # directory only ever holds this e2e run's own disposable Collector output (gitignored), so world-writable is a
+    # non-issue here, not a real exposure.
+    chmod 777 "$OUTPUT_DIR"
     # No explicit volume/dir creation for COMPOSER_CACHE_MOUNT: like MAGENTO_MOUNT, `docker run -v` creates a missing
     # named volume on demand, and a missing host-path directory too - same implicit behaviour, so no branching here.
     docker image inspect "$IMAGE" >/dev/null 2>&1 || docker build -q -t "$IMAGE" docker/php >/dev/null
