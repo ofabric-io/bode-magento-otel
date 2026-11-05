@@ -29,6 +29,8 @@ harness/                             end-to-end scenarios with the real extensio
 e2e/                                 a real Magento 2.4.9, compiled DI, production mode (in progress, see bin/e2e)
 bin/                                 dev wrapper, installer, install check, e2e entry point
 docs/releasing.md                    how a release reaches Packagist
+docs/adr/                            architecture decisions (0021: entity spans, one trace per unit of work)
+docs/canary-runbook.md              one-hour canary and go/no-go for the entity spans (`data` group)
 ```
 
 The root `composer.json` is what makes local development work: `packages/*` is a path repository with symlinks, so the
@@ -48,6 +50,9 @@ bin/dev composer verify        # all of the above
 bin/dev bin/verify-install     # a throwaway project requires the packages like a Magento store would
 harness/run.sh up && harness/run.sh scenarios   # real telemetry into a local Grafana (Docker)
 bin/e2e up && bin/e2e install && bin/e2e web-up # a real Magento 2.4.9, compiled DI, production mode (Docker)
+harness/run.sh verify         # after scenarios: forbidden content and trace-tree checks (harness/expectations.php)
+bin/e2e entities               # every group on: trace integrity and entity span assertions
+bin/e2e bench                  # spans/request and p50/p95, entities off vs on
 ```
 
 Magento's framework comes from the public [Mage-OS mirror](https://mirror.mage-os.org/), so no Magento licence keys are
@@ -59,4 +64,5 @@ Unit tests of the packages use no Magento classes. What needs a full Magento (co
 `setup:di:compile`'d in production mode. See `e2e/run.sh` for every subcommand. A CI workflow running the same thing
 is in progress.
 
-Releasing: [docs/releasing.md](docs/releasing.md).
+Releasing: [docs/releasing.md](docs/releasing.md). Decisions: [docs/adr/](docs/adr/0021-entity-spans-and-one-trace-per-unit-of-work.md).
+Rolling out the entity spans: [docs/canary-runbook.md](docs/canary-runbook.md); bin/e2e entities and bin/e2e bench are its local counterparts.
