@@ -190,7 +190,7 @@ case "${1:-}" in
     sleep 5 # the Collector's file exporter and the SDK's batch processor flush on a timer
     # Errors the telemetry swallowed (MAGENTO_OTEL_DEBUG): a hook that throws shows up here instead of as a missing span.
     echo "info  swallowed telemetry errors in the web server:"
-    docker logs "$WEB" 2>&1 | grep -E 'TMPDEBUG|bode|otel' | cut -c1-300 | sort | uniq -c | sort -rn | head -n 60 || true
+    docker logs "$WEB" 2>&1 | grep -E 'TMPDEBUG' | sed -E 's/^\[[^]]*\] //; s/ used=[0-9]+//' | sort | uniq -c | sort -rn || true
     status=0
     for a in trace-integrity entities; do
       "$0" assert "$a" || status=1
