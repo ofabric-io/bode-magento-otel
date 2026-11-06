@@ -16,6 +16,31 @@ class SpanStack
      * @var array<int,SpanHandleInterface|null>
      */
     private array $entries = [];
+    /**
+     * @var int[] serial of each entry, parallel to $entries
+     */
+    private array $serials = [];
+    /**
+     * @var int
+     */
+    private int $nextSerial = 0;
+
+    /**
+     * Index in $entries of every open unit root (request, job, message, command), outermost first.
+     *
+     * @var int[]
+     */
+    private array $roots = [];
+
+    /**
+     * @var int
+     */
+    private int $orphanedTotal = 0;
+
+    /**
+     * @var int
+     */
+    private int $orphanedPending = 0;
 
     /**
      * Pushes the entry of a pre hook.
@@ -26,6 +51,7 @@ class SpanStack
     public function push(?SpanHandleInterface $handle): void
     {
         $this->entries[] = $handle;
+        $this->serials[] = ++$this->nextSerial;
     }
 
     /**
@@ -35,7 +61,110 @@ class SpanStack
      */
     public function pop(): ?SpanHandleInterface
     {
-        return $this->entries === [] ? null : array_pop($this->entries);
+        if ($this->entries === []) {
+            return null;
+        }
+        if ($this->roots !== [] && end($this->roots) === count($this->entries) - 1) {
+            array_pop($this->roots);
+        }
+        array_pop($this->serials);
+
+        return array_pop($this->entries);
+    }
+
+    /**
+     * Pushes the entry of the pre hook of a unit root.
+     *
+     * A null handle is a suppressed unit (excluded path, no trace): its descendants are orphans.
+     *
+     * @param SpanHandleInterface|null $handle
+     * @return void
+     */
+    public function pushRoot(?SpanHandleInterface $handle): void
+    {
+        $this->roots[] = count($this->entries);
+        $this->entries[] = $handle;
+        $this->serials[] = ++$this->nextSerial;
+    }
+
+    /**
+     * True when the innermost unit of work has a real root span, so a child span may join its trace.
+     *
+     * @return bool
+     */
+    public function hasUnitRoot(): bool
+    {
+        return $this->roots !== [] && ($this->entries[end($this->roots)] ?? null) !== null;
+    }
+
+    /**
+     * Removes the entries above the innermost unit root.
+     *
+     * They are spans whose post hook never ran (e.g. after a fatal error); the root's own post hook then closes the
+     * root and the stack is clean for the next unit.
+     *
+     * @return SpanHandleInterface[] the leaked spans, innermost first; the caller ends them
+     */
+    public function unwindToRoot(): array
+    {
+        $leaked = [];
+        if ($this->roots === []) {
+            return $leaked;
+        }
+        $rootIndex = (int) end($this->roots);
+        while (count($this->entries) - 1 > $rootIndex) {
+            $entry = array_pop($this->entries);
+            array_pop($this->serials);
+            if ($entry !== null) {
+                $leaked[] = $entry;
+            }
+        }
+
+        return $leaked;
+    }
+
+    /**
+     * Counts a span that was not started because it had no unit root to belong to.
+     *
+     * @return void
+     */
+    public function recordOrphan(): void
+    {
+        $this->orphanedTotal++;
+        $this->orphanedPending++;
+    }
+
+    /**
+     * Orphans since the process started.
+     *
+     * @return int
+     */
+    public function orphanedTotal(): int
+    {
+        return $this->orphanedTotal;
+    }
+
+    /**
+     * Orphans counted since the previous unit root started; reading resets it.
+     *
+     * @return int
+     */
+    public function takePendingOrphans(): int
+    {
+        $count = $this->orphanedPending;
+        $this->orphanedPending = 0;
+
+        return $count;
+    }
+
+    /**
+     * Unique id of the innermost entry (parent of a span about to start), never reused in the process.
+     *
+     * @return int
+     */
+    public function currentSerial(): int
+    {
+        return $this->serials === [] ? 0 : $this->serials[count($this->serials) - 1];
     }
 
     /**
@@ -88,5 +217,7 @@ class SpanStack
     public function clear(): void
     {
         $this->entries = [];
+        $this->roots = [];
+        $this->serials = [];
     }
 }

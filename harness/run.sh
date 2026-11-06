@@ -6,6 +6,9 @@
 #   ALLOY_OTLP_CONFIG=path harness/run.sh collector  start an Alloy OTLP pipeline in front of LGTM
 #   harness/run.sh scenarios  run every scenario once (ENDPOINT=http://bode-alloy-otlp:4318 to go
 #                                           through the collector, which turns delta metrics into cumulative ones)
+#   harness/run.sh verify     print every span of the last run, fail on forbidden content and on trace-tree checks
+#                             (harness/expectations.php; checks marked EXPECT_AFTER are expected red until that rail merges,
+#                             HARNESS_STRICT_EXPECT=1 makes them gate)
 #   harness/run.sh logs       Bode_Logs end to end: lines checked against the contract and against Tempo
 #   harness/run.sh down
 #
@@ -17,7 +20,11 @@ export MSYS_NO_PATHCONV=1
 NET=bode-otel-net
 LGTM=bode-lgtm
 IMAGE=bode-otel-dev
-SCENARIOS=${SCENARIOS:-"storefront admin rest graphql cron-ok cron-fail cron-many indexer cache queue outbound gauges log"}
+SCENARIOS=${SCENARIOS:-"storefront admin rest graphql cron-ok cron-fail cron-many indexer cache queue outbound gauges log entity-product events-bootstrap event-excluded-path cron-in-event collection-volume"}
+# Groups of the trace-tree scenarios: the defaults that matter for roots plus everything that produces child spans.
+# "entities" is unknown (ignored) before Rail B merges, which is exactly why those checks are expected red until then.
+TREE_GROUPS=${TREE_GROUPS:-"http,cron,cli,queue,events,sql,redis,entities"}
+TREE_SCENARIOS=" entity-product events-bootstrap event-excluded-path cron-in-event collection-volume "
 
 php_run() { # php_run <extra docker args> -- <php args>
   docker run --rm --network "$NET" -v "$PWD:/repo" -v bode-otel-harness-vendor:/harness-vendor \
@@ -56,17 +63,28 @@ case "${1:-}" in
     echo "collector started as bode-alloy-otlp"
     ;;
   scenarios)
+    # Every process tags its spans (harness.run, harness.scenario) so verify can group them by scenario and ignore older runs.
+    run_id=$(date +%s)
+    echo "$run_id" > harness/.last-run
     for s in $SCENARIOS; do
       echo "== $s"
+      groups="${GROUPS_ENV:-http,cron,cli,indexer,cache,queue,outbound}"
+      case "$TREE_SCENARIOS" in *" $s "*) groups="$TREE_GROUPS" ;; esac
       php_run \
         -e OTEL_PHP_AUTOLOAD_ENABLED=true -e OTEL_SERVICE_NAME=bode-harness \
         -e OTEL_TRACES_EXPORTER=otlp -e OTEL_METRICS_EXPORTER=otlp -e OTEL_LOGS_EXPORTER=none \
         -e OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf -e "OTEL_EXPORTER_OTLP_ENDPOINT=${ENDPOINT:-http://$LGTM:4318}" \
         -e OTEL_METRICS_EXPORT_INTERVAL=1000 -e OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE=delta \
-        -e MAGENTO_OTEL_ASSUME_WEB=true -e MAGENTO_OTEL_TRACING_GROUPS="${GROUPS_ENV:-http,cron,cli,indexer,cache,queue,outbound}" \
+        -e OTEL_RESOURCE_ATTRIBUTES="harness.run=$run_id,harness.scenario=$s" \
+        -e MAGENTO_OTEL_ASSUME_WEB=true -e MAGENTO_OTEL_TRACING_GROUPS="$groups" \
         -e MAGENTO_OTEL_IP_MODE="${IP_MODE:-full}" -e MAGENTO_OTEL_CORRELATION_HEADERS=CF-Ray -e MAGENTO_OTEL_OUTBOUND_HOSTS=bode-lgtm \
         "$IMAGE" php /repo/harness/run.php "$s"
     done
+    ;;
+  verify)
+    # Spans are exported when each scenario process ends; Tempo needs a moment to make them searchable.
+    sleep "${VERIFY_WAIT:-10}"
+    php_run -e HARNESS_STRICT_EXPECT="${HARNESS_STRICT_EXPECT:-0}" "$IMAGE" php /repo/harness/verify.php "http://$LGTM:3200"
     ;;
   logs)
     # Bode_Logs end to end: run the logging scenarios with the real extension, check every line against the contract and

@@ -13,12 +13,27 @@ use Bode\Tracing\Api\InstrumentationGuardInterface;
  *                              subtract from the defaults (-cache); "all" switches every group on.
  * MAGENTO_OTEL_EXCLUDED_PATHS  comma separated path fragments never traced (default: DEFAULT_EXCLUDED)
  * MAGENTO_OTEL_SPAN_CAP        maximum spans per trace, cron job or queue message (default 500)
+ * MAGENTO_OTEL_SPAN_CAP_GROUPS  per-group caps, "entities:150,sql:200"; invalid entries ignored; none by default
+ * MAGENTO_OTEL_SPAN_COLLAPSE_AFTER  0 (default) = off; N > 0 stops starting repeated sibling spans after N
+ * MAGENTO_OTEL_ENTITY_REPEAT_LIMIT  same-named entity spans per unit of work (default 10, 0 = no limit)
  * MAGENTO_OTEL_ENABLED         "false" disables everything
  */
 class Config implements InstrumentationGuardInterface
 {
     public const DEFAULT_GROUPS = ['http', 'cron', 'cli', 'indexer', 'cache', 'queue', 'outbound'];
-    public const OPT_IN_GROUPS = ['events', 'sql', 'eav', 'redis', 'business'];
+    public const OPT_IN_GROUPS = ['events', 'sql', 'entities', 'redis'];
+
+    /**
+     * Alias => groups. `eav` and `business` are deprecated names of `entities`; `data` is the composite for the
+     * data layer.
+     *
+     * @var array<string,string[]>
+     */
+    public const GROUP_ALIASES = [
+        'eav' => ['entities'],
+        'business' => ['entities'],
+        'data' => ['entities', 'sql', 'redis'],
+    ];
     public const DEFAULT_EXCLUDED = ['health_check.php', '/health', '/static/', '/media/', 'cron.php', 'get.php'];
     public const DEFAULT_SPAN_CAP = 500;
 
@@ -87,6 +102,50 @@ class Config implements InstrumentationGuardInterface
     }
 
     /**
+     * Per-group span caps.
+     *
+     * @return array<string,int>
+     */
+    public function spanGroupCaps(): array
+    {
+        $caps = [];
+        foreach ($this->env->list('MAGENTO_OTEL_SPAN_CAP_GROUPS') as $item) {
+            $parts = explode(':', $item);
+            if (count($parts) !== 2 || !preg_match('/^[a-z_]+$/', $parts[0]) || !ctype_digit($parts[1])) {
+                continue;
+            }
+            $cap = (int) $parts[1];
+            if ($cap > 0) {
+                $caps[$parts[0]] = $cap;
+            }
+        }
+
+        return $caps;
+    }
+
+    /**
+     * Repeat collapse threshold, 0 = off.
+     *
+     * @return int
+     */
+    public function spanCollapseAfter(): int
+    {
+        return max(0, $this->env->int('MAGENTO_OTEL_SPAN_COLLAPSE_AFTER', 0));
+    }
+
+    /**
+     * How many spans with the same name the entities group starts per unit of work (0 = no limit).
+     *
+     * A page loads the same collection (the store collection) hundreds of times; the first ones tell the story.
+     *
+     * @return int
+     */
+    public function entityRepeatLimit(): int
+    {
+        return max(0, $this->env->int('MAGENTO_OTEL_ENTITY_REPEAT_LIMIT', 10));
+    }
+
+    /**
      * Enabled feature groups.
      *
      * @return string[] enabled groups
@@ -114,9 +173,9 @@ class Config implements InstrumentationGuardInterface
             if ($item === 'all') {
                 array_push($groups, ...$known);
             } elseif (str_starts_with($item, '-')) {
-                $subtract[] = substr($item, 1);
+                array_push($subtract, ...$this->expand(substr($item, 1)));
             } else {
-                $groups[] = $item;
+                array_push($groups, ...$this->expand($item));
             }
         }
         // Only "-x" items given: they subtract from the defaults.
@@ -125,5 +184,16 @@ class Config implements InstrumentationGuardInterface
         }
 
         return array_values(array_intersect(array_diff(array_unique($groups), $subtract), $known));
+    }
+
+    /**
+     * Expands an alias into the groups it stands for; any other name is returned as is.
+     *
+     * @param string $name
+     * @return string[]
+     */
+    private function expand(string $name): array
+    {
+        return self::GROUP_ALIASES[$name] ?? [$name];
     }
 }

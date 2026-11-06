@@ -35,7 +35,7 @@ class CronInstrumentation implements InstrumentationInterface
                 $config = is_array($params[2] ?? null) ? $params[2] : [];
                 $code = $this->safeLabel((string) ($config['name'] ?? 'unknown'));
 
-                return $runtime->spans->start(
+                return $runtime->spans->startUnit(
                     'cron ' . $code,
                     SpanKind::KIND_INTERNAL,
                     [

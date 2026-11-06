@@ -8,8 +8,13 @@
 #   bin/e2e install    composer create-project Magento 2.4.9, require packages/*, compile, deploy production mode
 #   bin/e2e web-up     start the long-lived storefront/admin web server (phpserver/router.php)
 #   bin/e2e scenario <name>   run one scenario (see e2e/scenarios/run.php for the list)
-#   bin/e2e assert <name>     run one assertion group (spans, metrics, logs, di, disabled-mode)
-#   bin/e2e all        up, install, web-up, every scenario, every assertion, down
+#   bin/e2e assert <name>     run one assertion group (spans, metrics, logs, di, disabled-mode, trace-integrity, entities)
+#   bin/e2e entities   every group on (E2E_ENTITY_GROUPS, default "all"): seed a product and category, browse them, then
+#                      assert trace-integrity (one trace per request, no stray or parentless spans) and entities;
+#                      restarts the web server afterwards with the default groups
+#   bin/e2e bench      benchmark protocol (e2e/bench/run.php, report.php): spans/request and p50/p95 for product page,
+#                      category page, order save and admin order grid, groups off vs on; results in e2e/.output/bench-results.*
+#   bin/e2e all        up, install, web-up, every scenario, every assertion, entities, down
 #   bin/e2e web-down / bin/e2e down
 #
 # Needs only Docker. Installed Magento lives in e2e/.magento and the composer cache in e2e/.composer-cache
@@ -36,6 +41,19 @@ MAGENTO_MOUNT=${MAGENTO_MOUNT:-bode-e2e-magento}
 # Same pattern as MAGENTO_MOUNT, for the composer cache: a named volume locally, overridable to a host path in CI so
 # actions/cache can key it by hash (Magento version, PHP/extension versions, packages/*/composer.json content).
 COMPOSER_CACHE_MOUNT=${COMPOSER_CACHE_MOUNT:-bode-e2e-composer-cache}
+# Tracing groups and service name of the web server and of scenario processes. `bin/e2e entities` and `bin/e2e bench`
+# override them per run; "all" switches every group on (events, sql, redis, entities, ...), and the distinct service name
+# lets assertions tell one run's spans from another's in the single traces.jsonl.
+E2E_TRACING_GROUPS=${E2E_TRACING_GROUPS:-http,cron,cli,indexer,cache,queue,outbound}
+E2E_SERVICE_NAME=${E2E_SERVICE_NAME:-bode-e2e}
+# Volume controls of the web server (empty = package defaults). Real Magento dispatches hundreds of events per page, so with
+# every group on the default 500-span budget is gone before the entity loads, and a page repeats the same collection load
+# (the store collection) hundreds of times: the entities run sets per-group caps and collapses repeated siblings.
+E2E_SPAN_CAP_GROUPS=${E2E_SPAN_CAP_GROUPS:-}
+E2E_SPAN_COLLAPSE_AFTER=${E2E_SPAN_COLLAPSE_AFTER:-}
+E2E_SPAN_CAP=${E2E_SPAN_CAP:-}
+SCENARIOS="home search not-found rest graphql admin-login admin-save cache-status indexer cron-ok cron-fail queue uncaught fatal"
+ASSERTIONS="spans di metrics logs disabled-mode"
 
 # Bounded, not `until ... do sleep ...; done` forever: a genuinely broken service (a crash-looping container, a bad
 # image) must fail with a clear message within a couple of minutes, not hang the whole job until a CI-level timeout
@@ -111,11 +129,12 @@ case "${1:-}" in
   web-up)
     docker rm -f "$WEB" >/dev/null 2>&1 || true
     docker run -d --name "$WEB" --network "$NET" -v "$MAGENTO_MOUNT:/magento" -w /magento \
-      -e OTEL_PHP_AUTOLOAD_ENABLED=true -e OTEL_SERVICE_NAME=bode-e2e \
+      -e OTEL_PHP_AUTOLOAD_ENABLED=true -e OTEL_SERVICE_NAME="$E2E_SERVICE_NAME" \
       -e OTEL_TRACES_EXPORTER=otlp -e OTEL_METRICS_EXPORTER=otlp -e OTEL_LOGS_EXPORTER=none \
       -e OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf -e "OTEL_EXPORTER_OTLP_ENDPOINT=http://$COLLECTOR:4318" \
       -e OTEL_METRICS_EXPORT_INTERVAL=1000 -e OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE=delta \
-      -e MAGENTO_OTEL_TRACING_GROUPS=http,cron,cli,indexer,cache,queue,outbound \
+      -e MAGENTO_OTEL_TRACING_GROUPS="$E2E_TRACING_GROUPS" \
+      -e MAGENTO_OTEL_SPAN_CAP="${E2E_SPAN_CAP:-500}" -e MAGENTO_OTEL_SPAN_CAP_GROUPS="$E2E_SPAN_CAP_GROUPS" -e MAGENTO_OTEL_SPAN_COLLAPSE_AFTER="$E2E_SPAN_COLLAPSE_AFTER" -e MAGENTO_OTEL_DEBUG="${E2E_DEBUG:-}" \
       -e MAGENTO_OTEL_IP_MODE=full -e MAGENTO_OTEL_CORRELATION_HEADERS=X-E2E-Run \
       -e MAGENTO_OTEL_LOGS_OUTPUT=file,stdout -e MAGENTO_OTEL_LOGS_ENABLED=true \
       "$IMAGE" php -S 0.0.0.0:8000 phpserver/router.php >/dev/null
@@ -136,11 +155,12 @@ case "${1:-}" in
     # would silently produce no telemetry at all. Keep this block identical to web-up's.
     docker run --rm --network "$NET" -v "$MAGENTO_MOUNT:/magento" -v "$PWD/e2e:/e2e:ro" -w /magento \
       -e WEB_HOST="$WEB" -e WEB_PORT=8000 \
-      -e OTEL_PHP_AUTOLOAD_ENABLED=true -e OTEL_SERVICE_NAME=bode-e2e \
+      -e OTEL_PHP_AUTOLOAD_ENABLED=true -e OTEL_SERVICE_NAME="$E2E_SERVICE_NAME" \
       -e OTEL_TRACES_EXPORTER=otlp -e OTEL_METRICS_EXPORTER=otlp -e OTEL_LOGS_EXPORTER=none \
       -e OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf -e "OTEL_EXPORTER_OTLP_ENDPOINT=http://$COLLECTOR:4318" \
       -e OTEL_METRICS_EXPORT_INTERVAL=1000 -e OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE=delta \
-      -e MAGENTO_OTEL_TRACING_GROUPS=http,cron,cli,indexer,cache,queue,outbound \
+      -e MAGENTO_OTEL_TRACING_GROUPS="$E2E_TRACING_GROUPS" \
+      -e MAGENTO_OTEL_SPAN_CAP="${E2E_SPAN_CAP:-500}" -e MAGENTO_OTEL_SPAN_CAP_GROUPS="$E2E_SPAN_CAP_GROUPS" -e MAGENTO_OTEL_SPAN_COLLAPSE_AFTER="$E2E_SPAN_COLLAPSE_AFTER" -e MAGENTO_OTEL_DEBUG="${E2E_DEBUG:-}" \
       -e MAGENTO_OTEL_IP_MODE=full -e MAGENTO_OTEL_CORRELATION_HEADERS=X-E2E-Run \
       -e MAGENTO_OTEL_LOGS_OUTPUT=file,stdout -e MAGENTO_OTEL_LOGS_ENABLED=true \
       "$IMAGE" php /e2e/scenarios/run.php "$@"
@@ -161,12 +181,63 @@ case "${1:-}" in
       -v "$PWD/e2e:/e2e:ro" -v "$PWD/packages:/packages:ro" -w /magento \
       "$IMAGE" php "/e2e/assert/$1.php" "${@:2}"
     ;;
-  down)
-    docker rm -f "$DB" "$SEARCH" "$COLLECTOR" "$WEB" >/dev/null 2>&1 || true
+  entities)
+    # The workflow's "all groups" step. Own service name, so trace-integrity can tell the spans of this run from the
+    # rest of traces.jsonl and call every span outside the traces the scenarios started a stray.
+    E2E_TRACING_GROUPS=${E2E_ENTITY_GROUPS:-all} E2E_SERVICE_NAME=bode-e2e-entities \
+      E2E_DEBUG=true E2E_SPAN_CAP=${E2E_ENTITY_SPAN_CAP:-500} E2E_SPAN_COLLAPSE_AFTER=${E2E_ENTITY_COLLAPSE:-8} E2E_SPAN_CAP_GROUPS=${E2E_ENTITY_CAPS:-events:100,sql:200,entities:150} "$0" web-up
+    E2E_SERVICE_NAME=bode-e2e "$0" scenario entities-seed
+    for s in entities-product entities-category entities-home; do
+      E2E_SERVICE_NAME=bode-e2e-entities "$0" scenario "$s"
+    done
+    sleep 5 # the Collector's file exporter and the SDK's batch processor flush on a timer
+    # Errors the telemetry swallowed (MAGENTO_OTEL_DEBUG): a hook that throws shows up here instead of as a missing span.
+    echo "info  swallowed telemetry errors in the web server:"
+    docker logs "$WEB" 2>&1 | grep -iE 'bode|otel' | cut -c1-300 | sort | uniq -c | sort -rn | head -n 20 || true
+    status=0
+    for a in trace-integrity entities; do
+      "$0" assert "$a" || status=1
+    done
+    "$0" web-up # back to the default groups for whatever runs next
+    exit $status
+    ;;
+  bench)
+    # Protocol of docs/canary-runbook.md, locally. BENCH_N requests per target (default 50), BENCH_TARGETS, BENCH_OFF_GROUPS
+    # (default: the default groups), BENCH_ON_GROUPS (default "all"; use "data" or "data,<defaults>" to measure the entities
+    # preset). Needs a completed `bin/e2e install` and `bin/e2e scenario entities-seed`.
+    OFF_GROUPS=${BENCH_OFF_GROUPS:-http,cron,cli,indexer,cache,queue,outbound}
+    ON_GROUPS=${BENCH_ON_GROUPS:-all}
+    mkdir -p "$OUTPUT_DIR/bench"
+    for mode in off on; do
+      groups=$OFF_GROUPS
+      [ "$mode" = on ] && groups=$ON_GROUPS
+      E2E_TRACING_GROUPS=$groups E2E_SERVICE_NAME="bode-e2e-bench-$mode" "$0" web-up
+      docker run --rm --network "$NET" -v "$OUTPUT_DIR:/output" -v "$PWD/e2e:/e2e:ro" \
+        -e WEB_HOST="$WEB" -e WEB_PORT=8000 -e BENCH_N="${BENCH_N:-50}" -e BENCH_WARMUP="${BENCH_WARMUP:-5}" \
+        -e BENCH_TARGETS="${BENCH_TARGETS:-product category order-save admin-grid}" \
+        "$IMAGE" php /e2e/bench/run.php "$mode"
+    done
+    sleep 5
+    "$0" web-up # default groups again
+    docker run --rm -v "$OUTPUT_DIR:/output" -v "$PWD/e2e:/e2e:ro" \
+      -e BENCH_MAX_P95_DELTA_PCT="${BENCH_MAX_P95_DELTA_PCT:-10}" -e BENCH_MAX_SPANS="${BENCH_MAX_SPANS:-600}" \
+      "$IMAGE" php /e2e/bench/report.php off on
+    ;;
+  all)
+    "$0" up
+    "$0" install
+    "$0" web-up
+    for s in $SCENARIOS; do "$0" scenario "$s"; done
+    for a in $ASSERTIONS; do "$0" assert "$a"; done
+    "$0" entities
+    "$0" web-down
+    "$0" down
+    ;;
+  down)    docker rm -f "$DB" "$SEARCH" "$COLLECTOR" "$WEB" >/dev/null 2>&1 || true
     docker network rm "$NET" >/dev/null 2>&1 || true
     ;;
   *)
-    sed -n '2,16p' "$0"
+    sed -n '2,22p' "$0"
     exit 2
     ;;
 esac

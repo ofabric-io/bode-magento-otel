@@ -40,7 +40,7 @@ bin/magento setup:upgrade
 | `sql` (off) | Database queries: verb, bounded table, obfuscated text. |
 | `events` (off) | Dispatched Magento events (name only). |
 | `redis` (off) | Redis cache backend commands (command only). |
-| `eav`, `business` (off) | Reserved names. Upstream's entity, pricing, totals and repository hooks were not carried over. |
+| `entities` (off) | Entity `load`/`save`/`delete` and collection `load` spans (`entity <op> <entity type or main table>`, `collection load <table>`), so SQL and Redis spans nest under the business operation that caused them. Attributes: `bode.magento.entity.operation`, `bode.magento.entity.type` or `db.collection.name`, `bode.magento.collection.size` (rows, collections only). Never ids, field values or arguments; errors record the exception class only. One span per object even when an EAV entity delegates to a flat resource. `eav` and `business` are deprecated aliases of `entities`. Hook targets: `Magento\Framework\Model\ResourceModel\Db\AbstractDb::{load,save,delete}`, `Magento\Eav\Model\Entity\AbstractEntity::{load,save,delete}`, `Magento\Framework\EntityManager\EntityManager::{load,save,delete}` (products, categories and other modern entities, named after the model's event prefix), `Magento\Catalog\Model\ResourceModel\{Product,Category}::{load,save,delete}` (overrides that never call the parent), `Magento\Framework\Data\Collection\AbstractDb::load`, `Magento\Eav\Model\Entity\Collection\AbstractCollection::load`. |
 
 Request spans carry: area, store and website code, `enduser.id` (customer id, or admin user id), customer group or admin
 role (`bode.magento.admin.role`), a keyed hash of the session id, `client.address`, the configured correlation headers,
@@ -62,9 +62,12 @@ message bodies.
 | Variable | Default | Meaning |
 |---|---|---|
 | `MAGENTO_OTEL_ENABLED` | `true` | `false` switches everything off |
-| `MAGENTO_OTEL_TRACING_GROUPS` | `http,cron,cli,indexer,cache,queue,outbound` | Groups on. `all` enables every group, `-name` subtracts from the defaults, `http,sql` is an explicit list |
+| `MAGENTO_OTEL_TRACING_GROUPS` | `http,cron,cli,indexer,cache,queue,outbound` | Groups on. `all` enables every group, `-name` subtracts from the defaults, `http,sql` is an explicit list. Aliases: `eav` and `business` (deprecated) = `entities`; `data` = `entities,sql,redis`; aliases work with `-` and `all`. Unknown names are ignored |
 | `MAGENTO_OTEL_EXCLUDED_PATHS` | `health_check.php,/health,/static/,/media/,cron.php,get.php` | Request path fragments that are never traced |
 | `MAGENTO_OTEL_SPAN_CAP` | `500` | Spans per request, cron job or queue message; the rest are counted as dropped, and the counter resets for the next unit of work |
+| `MAGENTO_OTEL_SPAN_CAP_GROUPS` | none | Per-group caps inside the global cap, e.g. `entities:150,sql:200,events:100`. Invalid entries are ignored; groups without an entry are bound only by `MAGENTO_OTEL_SPAN_CAP`. No defaults until real span-volume data exists |
+| `MAGENTO_OTEL_SPAN_COLLAPSE_AFTER` | `0` (off) | `N>0`: after N spans from the same hook under the same parent span, further ones are not started and are counted as collapsed |
+| `MAGENTO_OTEL_ENTITY_REPEAT_LIMIT` | `10` | Entities group: spans with the same name (`collection load store`) started per unit of work; the rest are skipped and counted in `bode.magento.spans.collapsed`. `0` = no limit. Real Magento loads the same collection hundreds of times per page |
 | `MAGENTO_OTEL_IP_MODE` | `truncate` | `full`, `truncate` (/24, /48), `hash`, `off` |
 | `MAGENTO_OTEL_USER_MODE` | `id` | `id`, `hash`, `off` (never e-mail or name) |
 | `MAGENTO_OTEL_HASH_SECRET` | none | Secret for the keyed hashes (session id, and IP/user in `hash` mode); without it they record nothing |
@@ -105,6 +108,14 @@ links a line to its trace in Grafana.
   group switch and the per-unit `SpanBudget`, keeps pre and post balanced with a `SpanStack` (a post hook never ends a
   span that is not its own), and catches, counts and swallows every failure (`ErrorCounter`, visible as
   `bode.telemetry.errors` in `Bode_Metrics`, logged with `MAGENTO_OTEL_DEBUG=true`).
+- **One trace per unit of work.** Only an HTTP request, a cron job, a queue message and a CLI command are roots
+  (`rootOfUnit`); they start from an empty context (a job run inside an open span is a new trace, not its child), except
+  a request, which keeps an incoming `traceparent`. Every other span (events, SQL, Redis, entities, outbound HTTP, cache,
+  indexers...) is child-only: with no open root (an excluded path, code outside any unit) it is not started, never
+  becomes a fragment trace, and is counted. The count is reported as `bode.magento.spans.orphaned` on the next root
+  (spans dropped since the previous unit ended) and is readable in code as `Model\TelemetryState::orphanedSpans()`.
+  `bode.magento.spans.dropped` (per-unit span cap) is now set on every kind of root, not only HTTP. Spans left open by a
+  missing post hook are ended when their root ends.
 - Code that needs dependency injection (sessions, store, admin user) cannot live in a static hook: the
   `Plugin\EnrichRequestSpan` after-plugin and the `Observer\AdminAudit` observer reach the current span through
   `Api\TelemetryStateInterface`.
@@ -115,3 +126,14 @@ links a line to its trace in Grafana.
 
 `composer test` in the monorepo root (also run in CI: the unit tests need no Magento). `harness/` in the monorepo
 runs every scenario end to end with the real extension against Tempo.
+
+## Span volume
+
+Three controls keep one noisy page from using the whole budget, checked in this order for every span: the global
+`MAGENTO_OTEL_SPAN_CAP`, the group cap (`..._SPAN_CAP_GROUPS`), then repeat collapsing (`..._SPAN_COLLAPSE_AFTER`).
+A refused span consumes nothing, the hook pair stays balanced (a null placeholder is pushed and popped), and the
+counters reset at every unit of work. "Same span" for collapsing means the same hooked class and method under the same
+parent span (the span name is only known after it is started). The root span gets `bode.magento.spans.dropped`,
+`bode.magento.spans.collapsed` and, only for groups that have a configured cap, `bode.magento.spans.dropped.<group>`
+(non-zero values only). A `repeat_count` attribute on the first sibling is not emitted: that span has usually ended
+before the repeats occur. Roots of other kinds can write the same attributes from `SpanBudget::summary()`.

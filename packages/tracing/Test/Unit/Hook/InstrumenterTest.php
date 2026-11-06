@@ -91,7 +91,8 @@ class InstrumenterTest extends TestCase
             static fn (): SpanHandleInterface => $span,
             static function (SpanHandleInterface $s): void {
                 $s->setAttribute('done', true);
-            }
+            },
+            true
         );
 
         $this->registrar->call('A', 'b');
@@ -104,7 +105,7 @@ class InstrumenterTest extends TestCase
     public function testExceptionIsRecordedOnTheSpan(): void
     {
         $span = new FakeSpan();
-        $this->instrumenter()->span('http', 'A', 'b', static fn (): SpanHandleInterface => $span);
+        $this->instrumenter()->span('http', 'A', 'b', static fn (): SpanHandleInterface => $span, null, true);
 
         $this->registrar->call('A', 'b', new RuntimeException('secret message'));
 
@@ -122,15 +123,17 @@ class InstrumenterTest extends TestCase
         });
 
         // Four nested calls with a budget of three: the fourth starts no span but must still balance.
+        $this->stack->pushRoot(new FakeSpan());
         $hook = $this->registrar->hooks['A::b'];
         for ($i = 0; $i < 4; $i++) {
             ($hook['pre'])(null, []);
         }
         self::assertCount(3, $started);
-        self::assertSame(4, $this->stack->depth());
+        self::assertSame(5, $this->stack->depth());
         for ($i = 0; $i < 4; $i++) {
             ($hook['post'])(null, [], null, null);
         }
+        $this->stack->pop();
 
         self::assertSame(0, $this->stack->depth());
         foreach ($started as $span) {
@@ -143,7 +146,7 @@ class InstrumenterTest extends TestCase
     {
         $this->instrumenter()->span('http', 'A', 'b', static function (): never {
             throw new RuntimeException('boom');
-        });
+        }, null, true);
 
         $this->registrar->call('A', 'b');
 
@@ -161,7 +164,8 @@ class InstrumenterTest extends TestCase
             static fn (): SpanHandleInterface => $span,
             static function (): never {
                 throw new RuntimeException('boom');
-            }
+            },
+            true
         );
 
         $this->registrar->call('A', 'b');
@@ -190,5 +194,45 @@ class InstrumenterTest extends TestCase
         self::assertSame(15, $steps);
         self::assertSame(35, $this->budget->droppedTotal());
         self::assertSame(0, $this->stack->depth());
+    }
+
+    public function testAHookThatStartsNothingDoesNotConsumeBudget(): void
+    {
+        $this->budget = new SpanBudget(2, ['sql' => 1]);
+        $this->stack->pushRoot(new FakeSpan());
+        $sqlOn = $this->instrumenter(['MAGENTO_OTEL_TRACING_GROUPS' => 'sql']);
+        $sqlOn->span('sql', 'A', 'b', static fn (): ?SpanHandleInterface => null);
+        $started = 0;
+        $sqlOn->span('sql', 'C', 'd', static function () use (&$started): SpanHandleInterface {
+            $started++;
+
+            return new FakeSpan();
+        });
+
+        for ($i = 0; $i < 5; $i++) {
+            $this->registrar->call('A', 'b');
+        }
+        $this->registrar->call('C', 'd');
+
+        self::assertSame(1, $started, 'five skipped duplicates must not use the group cap of 1');
+        self::assertSame(0, $this->budget->dropped());
+    }
+
+    public function testRefusedAndCollapsedSpansKeepHooksBalanced(): void
+    {
+        $this->budget = new SpanBudget(10, ['http' => 1], 1);
+        $this->stack->pushRoot(new FakeSpan()); // child-only spans need a unit root
+        $starts = 0;
+        $this->instrumenter()->span('http', 'A', 'b', static function () use (&$starts): SpanHandleInterface {
+            $starts++;
+
+            return new FakeSpan();
+        });
+
+        for ($i = 0; $i < 3; $i++) {
+            $this->registrar->call('A', 'b');
+            self::assertSame(1, $this->stack->depth(), 'only the root is left');
+        }
+        self::assertSame(1, $starts);
     }
 }

@@ -42,8 +42,9 @@ class Instrumenter
      * @param Closure $begin function (?object $subject, array $params): ?SpanHandleInterface; null = no span
      * @param Closure|null $finish function (SpanHandleInterface $span, ?object $subject, array $params,
      *                             mixed $returnValue, ?Throwable $e): void; adds attributes before the span ends
-     * @param bool $rootOfUnit true when this span is the root of a new unit of work (request, job, message): the
-     *                         span budget is reset first
+     * @param bool $rootOfUnit true when this span is the root of a new unit of work (request, job, message,
+     *                         command): the span budget is reset first. Every span that is not a root requires an open
+     *                         unit root and is dropped (counted as orphaned) when there is none
      * @param Closure|null $mutate function (SpanHandleInterface $span, ?object $subject, array $params): ?array;
      *                             returns changed call parameters (position => value), used to propagate trace context
      * @return void
@@ -69,28 +70,52 @@ class Instrumenter
                 array $params
             ) use (
                 $group,
+                $class,
+                $method,
                 $begin,
                 $rootOfUnit,
                 $mutate
             ): ?array {
                 $handle = null;
                 $changed = null;
+                $orphans = 0;
                 try {
                     if ($rootOfUnit) {
                         $this->budget->reset();
-                    } elseif (!$this->budget->tryAcquire()) {
+                        $orphans = $this->stack->takePendingOrphans();
+                    } elseif (!$this->stack->hasUnitRoot()) {
+                        // One trace per unit of work: only a request, job, message or command may start a trace.
+                        // Anything else without one would be a fragment, so it is dropped and counted.
+                        $this->stack->recordOrphan();
+                        $this->stack->push(null);
+
+                        return null;
+                    } elseif (!$this->budget->tryAcquire($group, $this->repeatKey($class, $method))) {
                         $this->stack->push(null);
 
                         return null;
                     }
                     $handle = $begin($subject, $params);
+                    if ($handle === null && !$rootOfUnit) {
+                        // The hook chose to start nothing (e.g. an entity span already open for this object): the
+                        // permission it was given must not count against the budget.
+                        $this->budget->release($group, $this->repeatKey($class, $method));
+                    }
+                    if ($handle !== null && $orphans > 0) {
+                        $handle->setAttribute('bode.magento.spans.orphaned', $orphans);
+                    }
                     if ($handle !== null && $mutate !== null) {
                         $changed = $mutate($handle, $subject, $params);
                     }
                 } catch (Throwable $e) {
                     $this->errors->record($group, $e);
                 }
-                $this->stack->push($handle);
+                if ($rootOfUnit) {
+                    // A root whose begin returned null (excluded path) is still a unit: it suppresses its children.
+                    $this->stack->pushRoot($handle);
+                } else {
+                    $this->stack->push($handle);
+                }
 
                 return $changed;
             },
@@ -101,13 +126,22 @@ class Instrumenter
                 ?Throwable $exception
             ) use (
                 $group,
-                $finish
+                $finish,
+                $rootOfUnit
             ): void {
+                if ($rootOfUnit) {
+                    $this->endLeaked($group);
+                }
                 $handle = $this->stack->pop();
                 if ($handle === null) {
                     return;
                 }
                 try {
+                    if ($rootOfUnit) {
+                        foreach ($this->budget->summary() as $name => $value) {
+                            $handle->setAttribute($name, $value);
+                        }
+                    }
                     if ($finish !== null) {
                         $finish($handle, $subject, $params, $returnValue, $exception);
                     }
@@ -125,6 +159,30 @@ class Instrumenter
                 }
             }
         );
+    }
+
+    /**
+     * Ends spans left open inside a unit whose post hook never ran.
+     *
+     * A fatal error or a swallowed throw causes that; their scopes are detached and the stack is balanced when the
+     * root ends.
+     *
+     * @param string $group
+     * @return void
+     */
+    private function endLeaked(string $group): void
+    {
+        try {
+            foreach ($this->stack->unwindToRoot() as $leaked) {
+                try {
+                    $leaked->end();
+                } catch (Throwable $e) {
+                    $this->errors->record($group, $e);
+                }
+            }
+        } catch (Throwable $e) {
+            $this->errors->record($group, $e);
+        }
     }
 
     /**
@@ -181,5 +239,17 @@ class Instrumenter
     public function current(): ?SpanHandleInterface
     {
         return $this->stack->top();
+    }
+
+    /**
+     * Identity of "same span under same parent" for repeat collapsing.
+     *
+     * @param string $class
+     * @param string $method
+     * @return string
+     */
+    private function repeatKey(string $class, string $method): string
+    {
+        return $this->stack->currentSerial() . '|' . $class . '::' . $method;
     }
 }
