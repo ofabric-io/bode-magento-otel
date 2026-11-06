@@ -196,6 +196,28 @@ class InstrumenterTest extends TestCase
         self::assertSame(0, $this->stack->depth());
     }
 
+    public function testAHookThatStartsNothingDoesNotConsumeBudget(): void
+    {
+        $this->budget = new SpanBudget(2, ['sql' => 1]);
+        $this->stack->pushRoot(new FakeSpan());
+        $sqlOn = $this->instrumenter(['MAGENTO_OTEL_TRACING_GROUPS' => 'sql']);
+        $sqlOn->span('sql', 'A', 'b', static fn (): ?SpanHandleInterface => null);
+        $started = 0;
+        $sqlOn->span('sql', 'C', 'd', static function () use (&$started): SpanHandleInterface {
+            $started++;
+
+            return new FakeSpan();
+        });
+
+        for ($i = 0; $i < 5; $i++) {
+            $this->registrar->call('A', 'b');
+        }
+        $this->registrar->call('C', 'd');
+
+        self::assertSame(1, $started, 'five skipped duplicates must not use the group cap of 1');
+        self::assertSame(0, $this->budget->dropped());
+    }
+
     public function testRefusedAndCollapsedSpansKeepHooksBalanced(): void
     {
         $this->budget = new SpanBudget(10, ['http' => 1], 1);

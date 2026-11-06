@@ -112,6 +112,25 @@ class SpanBudget
     }
 
     /**
+     * Gives back the permission of a span whose hook then started nothing.
+     *
+     * A guard such as "already inside a span for this object" skips a duplicate; without this it would eat budget and
+     * starve the real spans.
+     *
+     * @param string $group
+     * @param string $repeatKey
+     * @return void
+     */
+    public function release(string $group = '', string $repeatKey = ''): void
+    {
+        $this->used = max(0, $this->used - 1);
+        $this->groupUsed[$group] = max(0, ($this->groupUsed[$group] ?? 0) - 1);
+        if ($repeatKey !== '' && isset($this->siblings[$repeatKey])) {
+            $this->siblings[$repeatKey] = max(0, $this->siblings[$repeatKey] - 1);
+        }
+    }
+
+    /**
      * Counts a refused span.
      *
      * @param string $group

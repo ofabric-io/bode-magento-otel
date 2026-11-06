@@ -96,6 +96,11 @@ class Instrumenter
                         return null;
                     }
                     $handle = $begin($subject, $params);
+                    if ($handle === null && !$rootOfUnit) {
+                        // The hook chose to start nothing (e.g. an entity span already open for this object): the
+                        // permission it was given must not count against the budget.
+                        $this->budget->release($group, $this->repeatKey($class, $method));
+                    }
                     if ($handle !== null && $orphans > 0) {
                         $handle->setAttribute('bode.magento.spans.orphaned', $orphans);
                     }
