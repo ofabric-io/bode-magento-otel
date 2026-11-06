@@ -41,6 +41,8 @@ composer require --no-interaction --no-progress \
 # Magento's own ~300 modules - including Magento_Config, whose di.xml wires the system-config XML compiler. That
 # produced a real, confusing failure ("Cannot instantiate interface ... CompilerInterface") during development of
 # this script; module:enable is for adding a module to an *already installed* Magento (then setup:upgrade), not this.
+# 2FA is off in this install: POST /rest/V1/integration/admin/token (the wrap-product-save scenario) answers 400 "configure
+# 2FA first" while it is on, and nothing here is about 2FA. The two modules are disabled in the same step as the install.
 bin/magento setup:install \
   --base-url="http://bode-e2e-web:8000/" \
   --db-host="$DB_HOST" --db-name=magento --db-user=magento --db-password=magento \
@@ -49,7 +51,8 @@ bin/magento setup:install \
   --language=en_US --currency=USD --timezone=America/Chicago --use-rewrites=1 \
   --search-engine=opensearch --opensearch-host="$SEARCH_HOST" --opensearch-port=9200 \
   --opensearch-index-prefix=magento2 --opensearch-timeout=15 \
-  --backend-frontname=admin --no-interaction
+  --backend-frontname=admin --no-interaction \
+  --disable-modules=Magento_AdminAdobeImsTwoFactorAuth,Magento_TwoFactorAuth
 
 # One locale, one theme per area: the default deploy walks every installed theme/locale and is the single biggest
 # avoidable cost in the install phase.

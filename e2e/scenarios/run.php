@@ -417,7 +417,7 @@ switch ($scenario) {
             );
             if ($tokenStatus !== 200) {
                 fwrite(STDERR, "admin token request failed: HTTP $tokenStatus " . substr($token, 0, 300) . "\n");
-                exit(0); // TMP: keep the other scenarios' results visible while the token problem is diagnosed
+                exit(1);
             }
             [$status] = httpPost(
                 '/rest/V1/products',
