@@ -47,6 +47,16 @@ foreach (['entities-product' => $product, 'entities-category' => $category] as $
         static fn (string $n): bool => !str_starts_with($n, 'SELECT ') && !str_starts_with($n, 'redis ')
     )));
     echo "info  $scenario: " . count($distinct) . ' distinct non-SQL span names: ' . implode(' | ', array_slice($distinct, 0, 60)) . "\n";
+    $sql = array_values(array_unique(array_map(
+        static fn (array $s): string => substr($s['name'], 0, 60),
+        array_filter($trace, static fn (array $s): bool => str_starts_with($s['name'], 'SELECT '))
+    )));
+    echo "info  $scenario: sql: " . implode(' | ', array_slice($sql, 0, 40)) . "\n";
+    foreach ($trace as $span) {
+        if (str_starts_with($span['name'], 'GET ')) {
+            echo "info  $scenario: root attributes: " . json_encode($span['attributes']) . "\n";
+        }
+    }
 }
 
 check('entities-product: has entity load catalog_product', $any($product, 'entity load catalog_product'));
