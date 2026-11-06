@@ -144,7 +144,8 @@ class EntityInstrumentation implements InstrumentationInterface
             self::GROUP,
             $class,
             'load',
-            function (?object $subject) use ($runtime): ?SpanHandleInterface {
+            function (?object $subject) use ($runtime, $class): ?SpanHandleInterface {
+                error_log('TMPDEBUG coll raw hook=' . $class . ' subject=' . ($subject === null ? 'null' : get_class($subject)) . ' id=' . ($subject === null ? 0 : spl_object_id($subject)) . ' guard=' . ($subject !== null && isset($this->open[$subject]) ? 'open' : 'free'));
                 if ($subject === null || isset($this->open[$subject])) {
                     return null;
                 }
