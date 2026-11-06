@@ -15,6 +15,7 @@ use Magento\Framework\EntityManager\EntityManager;
 use Magento\Framework\Model\ResourceModel\Db\AbstractDb;
 use OpenTelemetry\API\Trace\SpanKind;
 use Throwable;
+use WeakMap;
 
 /**
  * Opt-in group "entities": one span per entity load/save/delete and per collection load, so the SQL and Redis spans of
@@ -50,11 +51,22 @@ class EntityInstrumentation implements InstrumentationInterface
     ];
 
     /**
-     * Object ids that already have an open entity span.
+     * Objects that already have an open entity span.
      *
-     * @var array<int,true>
+     * A WeakMap, not a list of object ids: PHP reuses the id of a freed object, so an id left behind by a span that was
+     * ended without its post hook (a fatal, an unwound root) would silently suppress the span of an unrelated object.
+     *
+     * @var WeakMap<object,true>
      */
-    private array $open = [];
+    private WeakMap $open;
+
+    /**
+     * Creates the guard map.
+     */
+    public function __construct()
+    {
+        $this->open = new WeakMap();
+    }
 
     /**
      * @inheritdoc
@@ -88,7 +100,7 @@ class EntityInstrumentation implements InstrumentationInterface
             function (?object $subject, array $params) use ($runtime, $operation): ?SpanHandleInterface {
                 // The model being handled is the first argument; the resource is shared by every model of its type.
                 $key = $this->key($subject, $params);
-                if ($key === null || isset($this->open[spl_object_id($key)])) {
+                if ($key === null || isset($this->open[$key])) {
                     return null;
                 }
                 $type = $this->entityType($subject, is_object($params[0] ?? null) ? $params[0] : null);
@@ -97,7 +109,7 @@ class EntityInstrumentation implements InstrumentationInterface
                     SpanKind::KIND_INTERNAL,
                     ['bode.magento.entity.operation' => $operation, $type['attribute'] => $type['name']]
                 );
-                $this->open[spl_object_id($key)] = true;
+                $this->open[$key] = true;
 
                 return $span;
             },
@@ -121,7 +133,7 @@ class EntityInstrumentation implements InstrumentationInterface
             $class,
             'load',
             function (?object $subject) use ($runtime): ?SpanHandleInterface {
-                if ($subject === null || isset($this->open[spl_object_id($subject)])) {
+                if ($subject === null || isset($this->open[$subject])) {
                     return null;
                 }
                 $table = $this->collectionTable($subject);
@@ -130,7 +142,7 @@ class EntityInstrumentation implements InstrumentationInterface
                     SpanKind::KIND_INTERNAL,
                     ['bode.magento.entity.operation' => 'load', 'db.collection.name' => $table]
                 );
-                $this->open[spl_object_id($subject)] = true;
+                $this->open[$subject] = true;
 
                 return $span;
             },
@@ -164,7 +176,7 @@ class EntityInstrumentation implements InstrumentationInterface
     private function release(?object $key): void
     {
         if ($key !== null) {
-            unset($this->open[spl_object_id($key)]);
+            unset($this->open[$key]);
         }
     }
 

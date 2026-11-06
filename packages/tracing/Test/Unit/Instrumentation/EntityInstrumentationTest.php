@@ -149,6 +149,18 @@ class EntityInstrumentationTest extends TestCase
         }
     }
 
+    public function testAMarkLeftByAnUnfinishedSpanNeverSuppressesALaterObject(): void
+    {
+        // Spans ended without their post hook (a fatal, an unwound root) leave their guard mark behind. PHP reuses the
+        // id of a freed object, so a guard keyed by object id would swallow the span of an unrelated later model.
+        for ($i = 0; $i < 30; $i++) {
+            $model = new \stdClass();
+            ($this->registrar->hooks[self::FLAT . '::load']['pre'])(new FakeResource('sales_order'), [$model, 1]);
+            self::assertNotNull($this->runtime->stack->top(), "iteration $i: the span was started");
+            unset($model);
+        }
+    }
+
     public function testRegistersNothingWhenTheGroupIsOff(): void
     {
         $registrar = new FakeRegistrar();
