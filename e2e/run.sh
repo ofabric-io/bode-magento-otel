@@ -46,6 +46,9 @@ COMPOSER_CACHE_MOUNT=${COMPOSER_CACHE_MOUNT:-bode-e2e-composer-cache}
 # lets assertions tell one run's spans from another's in the single traces.jsonl.
 E2E_TRACING_GROUPS=${E2E_TRACING_GROUPS:-http,cron,cli,indexer,cache,queue,outbound}
 E2E_SERVICE_NAME=${E2E_SERVICE_NAME:-bode-e2e}
+# Volume controls of the web server (empty = package defaults). Real Magento dispatches hundreds of events per page, so with
+# every group on the default 500-span budget is gone before the entity loads: the entities run sets per-group caps.
+E2E_SPAN_CAP_GROUPS=${E2E_SPAN_CAP_GROUPS:-}
 SCENARIOS="home search not-found rest graphql admin-login admin-save cache-status indexer cron-ok cron-fail queue uncaught fatal"
 ASSERTIONS="spans di metrics logs disabled-mode"
 
@@ -128,6 +131,7 @@ case "${1:-}" in
       -e OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf -e "OTEL_EXPORTER_OTLP_ENDPOINT=http://$COLLECTOR:4318" \
       -e OTEL_METRICS_EXPORT_INTERVAL=1000 -e OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE=delta \
       -e MAGENTO_OTEL_TRACING_GROUPS="$E2E_TRACING_GROUPS" \
+      -e MAGENTO_OTEL_SPAN_CAP_GROUPS="$E2E_SPAN_CAP_GROUPS" \
       -e MAGENTO_OTEL_IP_MODE=full -e MAGENTO_OTEL_CORRELATION_HEADERS=X-E2E-Run \
       -e MAGENTO_OTEL_LOGS_OUTPUT=file,stdout -e MAGENTO_OTEL_LOGS_ENABLED=true \
       "$IMAGE" php -S 0.0.0.0:8000 phpserver/router.php >/dev/null
@@ -153,6 +157,7 @@ case "${1:-}" in
       -e OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf -e "OTEL_EXPORTER_OTLP_ENDPOINT=http://$COLLECTOR:4318" \
       -e OTEL_METRICS_EXPORT_INTERVAL=1000 -e OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE=delta \
       -e MAGENTO_OTEL_TRACING_GROUPS="$E2E_TRACING_GROUPS" \
+      -e MAGENTO_OTEL_SPAN_CAP_GROUPS="$E2E_SPAN_CAP_GROUPS" \
       -e MAGENTO_OTEL_IP_MODE=full -e MAGENTO_OTEL_CORRELATION_HEADERS=X-E2E-Run \
       -e MAGENTO_OTEL_LOGS_OUTPUT=file,stdout -e MAGENTO_OTEL_LOGS_ENABLED=true \
       "$IMAGE" php /e2e/scenarios/run.php "$@"
@@ -176,7 +181,8 @@ case "${1:-}" in
   entities)
     # The workflow's "all groups" step. Own service name, so trace-integrity can tell the spans of this run from the
     # rest of traces.jsonl and call every span outside the traces the scenarios started a stray.
-    E2E_TRACING_GROUPS=${E2E_ENTITY_GROUPS:-all} E2E_SERVICE_NAME=bode-e2e-entities "$0" web-up
+    E2E_TRACING_GROUPS=${E2E_ENTITY_GROUPS:-all} E2E_SERVICE_NAME=bode-e2e-entities \
+      E2E_SPAN_CAP_GROUPS=${E2E_ENTITY_CAPS:-events:100,sql:200,entities:150} "$0" web-up
     E2E_SERVICE_NAME=bode-e2e "$0" scenario entities-seed
     for s in entities-product entities-category entities-home; do
       E2E_SERVICE_NAME=bode-e2e-entities "$0" scenario "$s"
