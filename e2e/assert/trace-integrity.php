@@ -63,6 +63,36 @@ foreach ($known as $traceId => $scenario) {
             . ($orphans ? ' (found: ' . implode(', ', array_slice(array_column($orphans, 'name'), 0, 5)) . ')' : ''),
         $orphans === []
     );
+    // Generated Interceptors/Proxies (core di.xml puts a plugin on AdapterInterface; the event manager is a lazy Proxy)
+    // must not double a call: no SQL or event span may sit directly under a span of the same name and, for SQL, the same
+    // statement. Collection spans are reported, not gated: observers on core_collection_abstract_load_* legitimately load
+    // other collections inside a collection load.
+    $byId = [];
+    foreach ($trace as $span) {
+        $byId[$span['spanId']] = $span;
+    }
+    $nested = ['gated' => [], 'collections' => []];
+    foreach ($trace as $span) {
+        $parent = $byId[$span['parentSpanId']] ?? null;
+        if ($parent === null || $parent['name'] !== $span['name']) {
+            continue;
+        }
+        $sameSql = ($parent['attributes']['db.query.text'] ?? '') === ($span['attributes']['db.query.text'] ?? '');
+        if (str_starts_with($span['name'], 'collection load')) {
+            $nested['collections'][$span['name']] = ($nested['collections'][$span['name']] ?? 0) + 1;
+        } elseif ($sameSql && (str_starts_with($span['name'], 'event ') || isset($span['attributes']['db.query.text']))) {
+            $nested['gated'][$span['name']] = ($nested['gated'][$span['name']] ?? 0) + 1;
+        }
+    }
+    check(
+        "$scenario: no SQL or event span nested inside a same-name span"
+            . ($nested['gated'] ? ' (found: ' . implode(', ', array_slice(array_keys($nested['gated']), 0, 5)) . ')' : ''),
+        $nested['gated'] === []
+    );
+    $sqlSpans = count(array_filter($trace, static fn (array $s): bool => isset($s['attributes']['db.query.text'])));
+    $eventSpans = count(array_filter($trace, static fn (array $s): bool => str_starts_with($s['name'], 'event ')));
+    echo "info  $scenario: $sqlSpans sql spans, $eventSpans event spans, nested same-name collection loads: "
+        . ($nested['collections'] === [] ? 'none' : json_encode($nested['collections'])) . "\n";
     $roots = array_values(array_filter($tops, static fn (array $s): bool => $s['parentSpanId'] === spanIdFor($scenario)));
     check("$scenario: exactly one root, child of the remote parent (found " . count($roots) . ')', count($roots) === 1);
     if (count($roots) === 1) {

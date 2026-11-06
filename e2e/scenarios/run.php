@@ -395,6 +395,53 @@ switch ($scenario) {
         }
         break;
 
+    case 'wrap-admin-login':
+    case 'wrap-graphql':
+    case 'wrap-product-save':
+        // Against the all-groups web server: requests whose call chain goes through Magento's generated wrappers
+        // (Mysql\Interceptor around every statement, Event\Manager\Proxy around every dispatch). They carry no
+        // assertion of their own; trace-integrity checks the traces for nested same-name SQL and event spans.
+        if ($scenario === 'wrap-admin-login') {
+            [$status] = httpGet('/admin/admin/auth/login/', traceparentFor($scenario));
+        } elseif ($scenario === 'wrap-graphql') {
+            [$status] = httpPost(
+                '/graphql',
+                traceparentFor($scenario),
+                (string) json_encode(['query' => '{ cart(cart_id: "e2e0000000000000000000000000000") { id } }'])
+            );
+        } else {
+            [$tokenStatus, $token] = httpPost(
+                '/rest/V1/integration/admin/token',
+                traceparentFor('wrap-token'),
+                (string) json_encode(['username' => 'admin', 'password' => 'Adm1n_Pass!123'])
+            );
+            if ($tokenStatus !== 200) {
+                fwrite(STDERR, "admin token request failed: HTTP $tokenStatus\n");
+                exit(1);
+            }
+            [$status] = httpPost(
+                '/rest/V1/products',
+                traceparentFor($scenario),
+                (string) json_encode(['product' => [
+                    'sku' => 'e2e-wrap-' . bin2hex(random_bytes(4)),
+                    'name' => 'E2E Wrap',
+                    'attribute_set_id' => 4,
+                    'price' => 5,
+                    'type_id' => 'simple',
+                    'status' => 1,
+                    'visibility' => 4,
+                    'weight' => 1,
+                ]]),
+                ['Authorization: Bearer ' . json_decode($token)]
+            );
+        }
+        echo "$scenario: HTTP $status, trace " . traceIdFor($scenario) . "\n";
+        if ($status !== 200) {
+            fwrite(STDERR, "expected HTTP 200 from $scenario, got $status\n");
+            exit(1);
+        }
+        break;
+
     default:
         fwrite(STDERR, "unknown scenario: $scenario\n");
         exit(2);

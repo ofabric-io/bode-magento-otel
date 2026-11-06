@@ -187,7 +187,7 @@ case "${1:-}" in
     E2E_TRACING_GROUPS=${E2E_ENTITY_GROUPS:-all} E2E_SERVICE_NAME=bode-e2e-entities \
       E2E_DEBUG=true E2E_SPAN_CAP=${E2E_ENTITY_SPAN_CAP:-500} E2E_SPAN_COLLAPSE_AFTER=${E2E_ENTITY_COLLAPSE:-8} E2E_SPAN_CAP_GROUPS=${E2E_ENTITY_CAPS:-events:100,sql:200,entities:150} "$0" web-up
     E2E_SERVICE_NAME=bode-e2e "$0" scenario entities-seed
-    for s in entities-product entities-category entities-home; do
+    for s in entities-product entities-category entities-home wrap-admin-login wrap-graphql wrap-product-save; do
       E2E_SERVICE_NAME=bode-e2e-entities "$0" scenario "$s"
     done
     sleep 5 # the Collector's file exporter and the SDK's batch processor flush on a timer

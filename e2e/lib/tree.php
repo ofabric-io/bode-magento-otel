@@ -14,7 +14,16 @@ require_once __DIR__ . '/trace.php';
 const ENTITIES_SERVICE = 'bode-e2e-entities';
 
 /** Scenarios of the all-groups run; each sends the deterministic traceparent of traceparentFor(<name>). */
-const ENTITIES_SCENARIOS = ['entities-product', 'entities-category', 'entities-home'];
+const ENTITIES_SCENARIOS = [
+    'entities-product',
+    'entities-category',
+    'entities-home',
+    // Where compiled DI's generated Interceptors and Proxies sit in the call chain: login page, GraphQL, POST /V1/products.
+    'wrap-admin-login',
+    'wrap-graphql',
+    'wrap-token',
+    'wrap-product-save',
+];
 
 /** @return list<array> the spans exported by one service */
 function spansOfService(array $spans, string $service): array
