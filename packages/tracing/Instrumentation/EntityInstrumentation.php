@@ -145,7 +145,7 @@ class EntityInstrumentation implements InstrumentationInterface
             $class,
             'load',
             function (?object $subject) use ($runtime, $class): ?SpanHandleInterface {
-                error_log('TMPDEBUG coll raw hook=' . $class . ' subject=' . ($subject === null ? 'null' : get_class($subject)) . ' id=' . ($subject === null ? 0 : spl_object_id($subject)) . ' guard=' . ($subject !== null && isset($this->open[$subject]) ? 'open' : 'free'));
+                error_log('TMPDEBUG coll raw hook=' . $class . ' subject=' . ($subject === null ? 'null' : get_class($subject)) . ' id=' . ($subject === null ? 0 : spl_object_id($subject)) . ' guard=' . ($subject !== null && isset($this->open[$subject]) ? 'open' : 'free') . ' depth=' . $runtime->stack->depth());
                 if ($subject === null || isset($this->open[$subject])) {
                     return null;
                 }
@@ -163,6 +163,7 @@ class EntityInstrumentation implements InstrumentationInterface
                 return $span;
             },
             function (SpanHandleInterface $span, ?object $subject, array $params, mixed $ret, ?Throwable $e): void {
+                error_log('TMPDEBUG coll finish id=' . ($subject === null ? 0 : spl_object_id($subject)));
                 $this->release($subject);
                 if ($e === null && $subject !== null && is_callable([$subject, 'count'])) {
                     $span->setAttribute('bode.magento.collection.size', (int) $subject->count());

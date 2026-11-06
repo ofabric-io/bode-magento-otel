@@ -193,7 +193,7 @@ case "${1:-}" in
     sleep 5 # the Collector's file exporter and the SDK's batch processor flush on a timer
     # Errors the telemetry swallowed (MAGENTO_OTEL_DEBUG): a hook that throws shows up here instead of as a missing span.
     echo "info  swallowed telemetry errors in the web server:"
-    docker logs "$WEB" 2>&1 | grep -E 'TMPDEBUG' | sed -E 's/^\[[^]]*\] //' | sort | uniq -c | sort -rn | head -n 80 || true
+    docker logs "$WEB" 2>&1 | grep -E 'TMPDEBUG coll (raw|finish)' | sed -E 's/^\[[^]]*\] //; s/TMPDEBUG coll //; s/hook=Magento.Framework.Data.Collection.AbstractDb/DATA/; s/hook=Magento.Eav.Model.Entity.Collection.AbstractCollection/EAV/; s/subject=[A-Za-z0-9_\\\\]*\\\\Collection.Interceptor//' | head -n 150 || true
     status=0
     for a in trace-integrity entities; do
       "$0" assert "$a" || status=1
