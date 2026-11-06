@@ -22,6 +22,7 @@ declare(strict_types=1);
  *   paths    list of [path, ?marker]    each must exist
  *   absent   list of [fnmatch, ?marker] no span name may match
  *   max      [int spans per trace, ?marker]
+ *   counts   [fnmatch => int]           exactly that many spans of that name in the scenario (all traces together)
  */
 
 return [
@@ -74,5 +75,26 @@ return [
         // (span cap 500 today; rail C's per-group caps and collapse only make it smaller). Slack of 60 for the root and
         // any collapse summary spans. Passes today because no entity spans exist yet: it guards B and C from here on.
         'max' => [560, null],
+    ],
+    'wrapped-calls' => [
+        // Compiled DI wraps the adapter in Mysql\Interceptor, the event manager in Event\Manager\Proxy and collections in
+        // Interceptors: one logical call is one span, never a nested same-name pair (the nested check runs on every
+        // tree scenario; the exact counts below are the sharper form of it).
+        'traces' => [1, null],
+        'orphans' => null,
+        'paths' => [
+            ['GET * > event wrapped_event > SELECT store', null],
+            ['GET * > UPDATE sales_order', null],
+            ['GET * > SELECT core_config_data', null],
+            ['GET * > collection load*', null],
+        ],
+        'absent' => [],
+        'counts' => [
+            'event wrapped_event' => 1,
+            'SELECT store' => 1,
+            'UPDATE sales_order' => 1,
+            'SELECT core_config_data' => 1,
+            'collection load*' => 1,
+        ],
     ],
 ];

@@ -201,7 +201,7 @@ switch ($scenario) {
     // ---- Trace-tree scenarios: run with the groups in run.sh (tree_groups). Expected trees: harness/expectations.php.
     case 'entity-product':
         // A product page: an event, an EAV entity load that queries the database, a Redis read, all inside one request.
-        $event = new Magento\Framework\Event\Manager();
+        $event = new Magento\Framework\Event\Manager\Proxy();
         Harness\Nest::on('Magento\Eav\Model\Entity\AbstractEntity::load', static function (array $args): void {
             Harness\Nest::sql('SELECT `e`.* FROM `catalog_product_entity` AS `e` WHERE (e.entity_id = 1042)');
         });
@@ -215,7 +215,7 @@ switch ($scenario) {
     case 'events-bootstrap':
         // Events dispatched before Bootstrap::run and after it have no unit of work to belong to: they must not start a
         // trace of their own. The one during the request is a child of the request.
-        $event = new Magento\Framework\Event\Manager();
+        $event = new Magento\Framework\Event\Manager\Proxy();
         $event->dispatch('before_bootstrap_event');
         $web('frontend', '/checkout/cart/', static function ($r) use ($event): void {
             $event->dispatch('during_bootstrap_event');
@@ -224,7 +224,7 @@ switch ($scenario) {
         break;
     case 'event-excluded-path':
         // The request is on an excluded path (no root span), so the event inside it has no root either: dropped.
-        $event = new Magento\Framework\Event\Manager();
+        $event = new Magento\Framework\Event\Manager\Proxy();
         $web('frontend', '/static/frontend/Vendor/theme/en_US/app.js', static function ($r) use ($event): void {
             $event->dispatch('static_asset_event');
         });
@@ -232,7 +232,7 @@ switch ($scenario) {
     case 'cron-in-event':
         // A cron job started from inside an event dispatched outside any request: the event is dropped (no root), the
         // job is a root (cron) and owns the trace; what the job does is its child.
-        $event = new Magento\Framework\Event\Manager();
+        $event = new Magento\Framework\Event\Manager\Proxy();
         Harness\Nest::on('Magento\Framework\Event\Manager::dispatch', static function (array $args) use ($schedule, $job): void {
             if ($args[0] === 'cron_from_event') {
                 (new Magento\Cron\Observer\ProcessCronQueueObserver())->tryRunJob(0, 0, $job('cron_from_event'), $schedule(), 'default');
@@ -257,7 +257,24 @@ switch ($scenario) {
             Harness\Nest::sql('SELECT `e`.* FROM `catalog_product_entity` AS `e` WHERE (e.entity_id = ' . (int) $args[1] . ')');
         });
         $web('frontend', '/gold-coins.html', static function ($r): void {
-            (new Magento\Catalog\Model\ResourceModel\Product\Collection())->load();
+            (new Magento\Catalog\Model\ResourceModel\Product\Collection\Interceptor())->load();
+        });
+        break;
+    case 'wrapped-calls':
+        // What compiled DI puts around real classes: a lazy Event\Manager\Proxy, a Mysql\Interceptor (core di.xml plugin on
+        // AdapterInterface) and a collection Interceptor. Each logical call must be one span, never a nested same-name pair.
+        $event = new Magento\Framework\Event\Manager\Proxy();
+        $db = new Magento\Framework\DB\Adapter\Pdo\Mysql\Interceptor();
+        Harness\Nest::on('Magento\Framework\Event\Manager::dispatch', static function (array $args) use ($db): void {
+            if ($args[0] === 'wrapped_event') {
+                $db->query('SELECT main_table.* FROM store AS main_table WHERE (code = \'secret\')');
+            }
+        });
+        $web('frontend', '/wrapped.html', static function ($r) use ($event, $db): void {
+            $event->dispatch('wrapped_event');
+            $db->multiQuery('UPDATE sales_order SET status = \'processing\' WHERE (entity_id = 7)');
+            $db->query('SELECT path FROM core_config_data');
+            (new Magento\Catalog\Model\ResourceModel\Product\Collection\Interceptor())->load();
         });
         break;
     case 'bench':
