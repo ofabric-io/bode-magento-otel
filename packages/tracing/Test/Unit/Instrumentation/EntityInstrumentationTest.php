@@ -10,6 +10,8 @@ use Bode\Tracing\Model\Config;
 use Bode\Tracing\Model\Environment;
 use Bode\Tracing\Test\Unit\Hook\FakeRegistrar;
 use Bode\Tracing\Test\Unit\Hook\FakeSpan;
+use Magento\Catalog\Model\ResourceModel\Category as CategoryResource;
+use Magento\Catalog\Model\ResourceModel\Product as ProductResource;
 use OpenTelemetry\API\Trace\SpanKind;
 use OpenTelemetry\Context\ScopeInterface;
 use OpenTelemetry\SDK\Sdk;
@@ -115,6 +117,15 @@ class EntityInstrumentationTest extends TestCase
         }
         self::assertArrayHasKey(self::DATA_COLLECTION . '::load', $this->registrar->hooks);
         self::assertArrayHasKey(self::EAV_COLLECTION . '::load', $this->registrar->hooks);
+    }
+
+    public function testHooksTheConcreteEavResourcesThatOverrideWithoutCallingParent(): void
+    {
+        foreach ([ProductResource::class, CategoryResource::class] as $class) {
+            foreach (['load', 'save', 'delete'] as $method) {
+                self::assertArrayHasKey($class . '::' . $method, $this->registrar->hooks);
+            }
+        }
     }
 
     public function testRegistersNothingWhenTheGroupIsOff(): void

@@ -6,6 +6,8 @@ namespace Bode\Tracing\Instrumentation;
 
 use Bode\Tracing\Hook\Runtime;
 use Bode\Tracing\Hook\SpanHandleInterface;
+use Magento\Catalog\Model\ResourceModel\Category as CategoryResource;
+use Magento\Catalog\Model\ResourceModel\Product as ProductResource;
 use Magento\Eav\Model\Entity\AbstractEntity;
 use Magento\Eav\Model\Entity\Collection\AbstractCollection;
 use Magento\Framework\Data\Collection\AbstractDb as DataCollection;
@@ -33,6 +35,17 @@ class EntityInstrumentation implements InstrumentationInterface
     private const MAX_NAME = 100;
 
     /**
+     * Concrete resource models that override load/save/delete without calling the parent, so a hook on the abstract
+     * class never fires for them (verified in Magento source: Catalog Product::load and Category::load do not call
+     * parent::load).
+     * A hook on a missing class or method does nothing; the re-entrancy guard keeps parent and child from doubling.
+     */
+    private const EAV_OVERRIDERS = [
+        ProductResource::class,
+        CategoryResource::class,
+    ];
+
+    /**
      * Object ids that already have an open entity span.
      *
      * @var array<int,true>
@@ -44,7 +57,7 @@ class EntityInstrumentation implements InstrumentationInterface
      */
     public function register(Runtime $runtime): void
     {
-        foreach ([self::FLAT_RESOURCE, self::EAV_ENTITY] as $class) {
+        foreach (array_merge([self::FLAT_RESOURCE, self::EAV_ENTITY], self::EAV_OVERRIDERS) as $class) {
             foreach (['load', 'save', 'delete'] as $operation) {
                 $this->hookEntity($runtime, $class, $operation);
             }
