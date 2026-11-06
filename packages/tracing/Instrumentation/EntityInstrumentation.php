@@ -11,6 +11,7 @@ use Magento\Catalog\Model\ResourceModel\Product as ProductResource;
 use Magento\Eav\Model\Entity\AbstractEntity;
 use Magento\Eav\Model\Entity\Collection\AbstractCollection;
 use Magento\Framework\Data\Collection\AbstractDb as DataCollection;
+use Magento\Framework\EntityManager\EntityManager;
 use Magento\Framework\Model\ResourceModel\Db\AbstractDb;
 use OpenTelemetry\API\Trace\SpanKind;
 use Throwable;
@@ -43,6 +44,9 @@ class EntityInstrumentation implements InstrumentationInterface
     private const EAV_OVERRIDERS = [
         ProductResource::class,
         CategoryResource::class,
+        // Products, categories and most other modern entities load and save through the EntityManager, not through
+        // their resource model: seen on a real 2.4.9 where a product page issued the queries but no entity span.
+        EntityManager::class,
     ];
 
     /**
@@ -87,7 +91,7 @@ class EntityInstrumentation implements InstrumentationInterface
                 if ($key === null || isset($this->open[spl_object_id($key)])) {
                     return null;
                 }
-                $type = $this->entityType($subject);
+                $type = $this->entityType($subject, is_object($params[0] ?? null) ? $params[0] : null);
                 $span = $runtime->spans->start(
                     'entity ' . $operation . ' ' . $type['name'],
                     SpanKind::KIND_INTERNAL,
@@ -168,9 +172,10 @@ class EntityInstrumentation implements InstrumentationInterface
      * Entity type code (EAV) or main table (flat resource), sanitised and bounded.
      *
      * @param object|null $subject
+     * @param object|null $model the model being handled, used when the subject carries no metadata (EntityManager)
      * @return array{attribute:string,name:string}
      */
-    private function entityType(?object $subject): array
+    private function entityType(?object $subject, ?object $model = null): array
     {
         try {
             if ($subject !== null && is_callable([$subject, 'getEntityType'])) {
@@ -184,6 +189,10 @@ class EntityInstrumentation implements InstrumentationInterface
             }
             if ($subject !== null && is_callable([$subject, 'getMainTable'])) {
                 return ['attribute' => 'db.collection.name', 'name' => $this->clean($subject->getMainTable())];
+            }
+            // The event prefix of a model is its entity name (catalog_product, sales_order): bounded, never an id.
+            if ($model !== null && is_callable([$model, 'getEventPrefix'])) {
+                return ['attribute' => 'bode.magento.entity.type', 'name' => $this->clean($model->getEventPrefix())];
             }
         } catch (Throwable) {
             // Falls through: an unnamed entity is still a useful span.

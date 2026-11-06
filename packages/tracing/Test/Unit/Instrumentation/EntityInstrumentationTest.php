@@ -12,6 +12,7 @@ use Bode\Tracing\Test\Unit\Hook\FakeRegistrar;
 use Bode\Tracing\Test\Unit\Hook\FakeSpan;
 use Magento\Catalog\Model\ResourceModel\Category as CategoryResource;
 use Magento\Catalog\Model\ResourceModel\Product as ProductResource;
+use Magento\Framework\EntityManager\EntityManager;
 use OpenTelemetry\API\Trace\SpanKind;
 use OpenTelemetry\Context\ScopeInterface;
 use OpenTelemetry\SDK\Sdk;
@@ -125,6 +126,26 @@ class EntityInstrumentationTest extends TestCase
             foreach (['load', 'save', 'delete'] as $method) {
                 self::assertArrayHasKey($class . '::' . $method, $this->registrar->hooks);
             }
+        }
+    }
+
+    public function testEntityManagerLoadIsNamedAfterTheModelEventPrefixAndCarriesNoIds(): void
+    {
+        $model = new class {
+            public function getEventPrefix(): string
+            {
+                return 'catalog_product';
+            }
+        };
+        $this->invoke(EntityManager::class . '::load', new \stdClass(), [$model, 'sku-secret-4711']);
+
+        $span = $this->exporter->getSpans()[0];
+        self::assertSame('entity load catalog_product', $span->getName());
+        self::assertSame('catalog_product', $span->getAttributes()->get('bode.magento.entity.type'));
+        $dump = json_encode([$span->getName(), $span->getAttributes()->toArray()], JSON_THROW_ON_ERROR);
+        self::assertStringNotContainsString('4711', $dump);
+        foreach (['load', 'save', 'delete'] as $method) {
+            self::assertArrayHasKey(EntityManager::class . '::' . $method, $this->registrar->hooks);
         }
     }
 
