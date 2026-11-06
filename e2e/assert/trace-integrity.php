@@ -80,7 +80,6 @@ foreach ($known as $traceId => $scenario) {
         $sameSql = ($parent['attributes']['db.query.text'] ?? '') === ($span['attributes']['db.query.text'] ?? '');
         if (str_starts_with($span['name'], 'collection load')) {
             $nested['collections'][$span['name']] = ($nested['collections'][$span['name']] ?? 0) + 1;
-            $nested['debug'][] = $span['name'] . ' parentObj=' . ($parent['attributes']['bode.debug.object'] ?? '?') . ' childObj=' . ($span['attributes']['bode.debug.object'] ?? '?') . ' ' . ($span['attributes']['bode.debug.class'] ?? '');
         } elseif ($sameSql && (str_starts_with($span['name'], 'event ') || isset($span['attributes']['db.query.text']))) {
             $nested['gated'][$span['name']] = ($nested['gated'][$span['name']] ?? 0) + 1;
         }
@@ -94,9 +93,6 @@ foreach ($known as $traceId => $scenario) {
     $eventSpans = count(array_filter($trace, static fn (array $s): bool => str_starts_with($s['name'], 'event ')));
     echo "info  $scenario: $sqlSpans sql spans, $eventSpans event spans, nested same-name collection loads: "
         . ($nested['collections'] === [] ? 'none' : json_encode($nested['collections'])) . "\n";
-    foreach (array_slice($nested['debug'] ?? [], 0, 6) as $line) {
-        echo "info  $scenario: TMPDEBUG nested $line\n";
-    }
     $roots = array_values(array_filter($tops, static fn (array $s): bool => $s['parentSpanId'] === spanIdFor($scenario)));
     check("$scenario: exactly one root, child of the remote parent (found " . count($roots) . ')', count($roots) === 1);
     if (count($roots) === 1) {

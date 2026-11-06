@@ -40,12 +40,7 @@ class GeneratedWrapper
             return false;
         }
 
-        $r = $this->known[$declaringClass] ??= $this->classify($declaringClass);
-        if ($r) {
-            error_log('TMPDEBUG wrapper-skip ' . $declaringClass);
-        }
-
-        return $r;
+        return $this->known[$declaringClass] ??= $this->classify($declaringClass);
     }
 
     /**

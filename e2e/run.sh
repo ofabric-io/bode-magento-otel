@@ -47,8 +47,8 @@ COMPOSER_CACHE_MOUNT=${COMPOSER_CACHE_MOUNT:-bode-e2e-composer-cache}
 E2E_TRACING_GROUPS=${E2E_TRACING_GROUPS:-http,cron,cli,indexer,cache,queue,outbound}
 E2E_SERVICE_NAME=${E2E_SERVICE_NAME:-bode-e2e}
 # Volume controls of the web server (empty = package defaults). Real Magento dispatches hundreds of events per page, so with
-# every group on the default 500-span budget is gone before the entity loads, and a page repeats the same collection load
-# (the store collection) hundreds of times: the entities run sets per-group caps and collapses repeated siblings.
+# every group on the default 500-span budget is gone before the entity loads: the entities run sets per-group caps and
+# collapses repeated siblings.
 E2E_SPAN_CAP_GROUPS=${E2E_SPAN_CAP_GROUPS:-}
 E2E_SPAN_COLLAPSE_AFTER=${E2E_SPAN_COLLAPSE_AFTER:-}
 E2E_SPAN_CAP=${E2E_SPAN_CAP:-}
@@ -193,7 +193,7 @@ case "${1:-}" in
     sleep 5 # the Collector's file exporter and the SDK's batch processor flush on a timer
     # Errors the telemetry swallowed (MAGENTO_OTEL_DEBUG): a hook that throws shows up here instead of as a missing span.
     echo "info  swallowed telemetry errors in the web server:"
-    docker logs "$WEB" 2>&1 | grep -E 'TMPDEBUG coll (raw|finish)' | sed -E 's/^\[[^]]*\] //; s/TMPDEBUG coll //; s/hook=Magento.Framework.Data.Collection.AbstractDb/DATA/; s/hook=Magento.Eav.Model.Entity.Collection.AbstractCollection/EAV/; s/subject=[A-Za-z0-9_\\\\]*\\\\Collection.Interceptor//' | head -n 150 || true
+    docker logs "$WEB" 2>&1 | grep -iE 'bode|otel' | cut -c1-300 | sort | uniq -c | sort -rn | head -n 20 || true
     status=0
     for a in trace-integrity entities; do
       "$0" assert "$a" || status=1

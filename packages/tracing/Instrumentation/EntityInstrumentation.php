@@ -144,8 +144,7 @@ class EntityInstrumentation implements InstrumentationInterface
             self::GROUP,
             $class,
             'load',
-            function (?object $subject) use ($runtime, $class): ?SpanHandleInterface {
-                error_log('TMPDEBUG coll raw hook=' . $class . ' subject=' . ($subject === null ? 'null' : get_class($subject)) . ' id=' . ($subject === null ? 0 : spl_object_id($subject)) . ' guard=' . ($subject !== null && isset($this->open[$subject]) ? 'open' : 'free') . ' depth=' . $runtime->stack->depth());
+            function (?object $subject) use ($runtime): ?SpanHandleInterface {
                 if ($subject === null || isset($this->open[$subject])) {
                     return null;
                 }
@@ -156,17 +155,22 @@ class EntityInstrumentation implements InstrumentationInterface
                 $span = $runtime->spans->start(
                     'collection load ' . $table,
                     SpanKind::KIND_INTERNAL,
-                    ['bode.magento.entity.operation' => 'load', 'db.collection.name' => $table, 'bode.debug.object' => spl_object_id($subject), 'bode.debug.class' => get_class($subject)]
+                    ['bode.magento.entity.operation' => 'load', 'db.collection.name' => $table]
                 );
                 $this->open[$subject] = true;
 
                 return $span;
             },
             function (SpanHandleInterface $span, ?object $subject, array $params, mixed $ret, ?Throwable $e): void {
-                error_log('TMPDEBUG coll finish id=' . ($subject === null ? 0 : spl_object_id($subject)));
-                $this->release($subject);
-                if ($e === null && $subject !== null && is_callable([$subject, 'count'])) {
-                    $span->setAttribute('bode.magento.collection.size', (int) $subject->count());
+                try {
+                    // Read the size while the guard is still set: Magento's count() calls load(), which is hooked.
+                    // Releasing first made that call start a new span for the same collection, whose own finish counted
+                    // again, level after level.
+                    if ($e === null && $subject !== null && is_callable([$subject, 'count'])) {
+                        $span->setAttribute('bode.magento.collection.size', (int) $subject->count());
+                    }
+                } finally {
+                    $this->release($subject);
                 }
             }
         );

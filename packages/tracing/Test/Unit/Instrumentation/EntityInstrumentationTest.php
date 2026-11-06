@@ -193,6 +193,26 @@ class EntityInstrumentationTest extends TestCase
         self::assertSame($before + 1, count($this->exporter->getSpans()));
     }
 
+    public function testReadingTheRowCountDoesNotStartAnotherSpanForTheSameCollection(): void
+    {
+        // Magento's Collection::count() calls load(), which is hooked. Reading the size when the span ends must not
+        // re-enter the hook: that used to start a nested span per level, each ending by counting again, until the
+        // repeat limit stopped it (nine nested "collection load store" spans on a real page).
+        $collection = new FakeCollection('store', 4);
+        $depth = 0;
+        $collection->onCount = function () use ($collection, &$depth): void {
+            if (++$depth <= 25) {
+                $this->invoke(self::DATA_COLLECTION . '::load', $collection, []);
+            }
+        };
+
+        $this->invoke(self::DATA_COLLECTION . '::load', $collection, []);
+
+        $names = array_map(static fn ($s): string => $s->getName(), $this->exporter->getSpans());
+        self::assertSame(['collection load store'], $names, 'one load, one span');
+        self::assertSame(1, $this->runtime->stack->depth(), 'only the root is left');
+    }
+
     public function testRegistersNothingWhenTheGroupIsOff(): void
     {
         $registrar = new FakeRegistrar();

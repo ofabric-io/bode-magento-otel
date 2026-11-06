@@ -10,6 +10,11 @@ namespace Bode\Tracing\Test\Unit\Instrumentation;
 class FakeCollection
 {
     /**
+     * @var callable|null runs on every count(): Magento's count() calls load(), which is hooked
+     */
+    public mixed $onCount = null;
+
+    /**
      * @param string $table
      * @param int $rows
      */
@@ -34,6 +39,10 @@ class FakeCollection
      */
     public function count(): int
     {
+        if ($this->onCount !== null) {
+            ($this->onCount)();
+        }
+
         return $this->rows;
     }
 }
