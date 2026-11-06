@@ -162,9 +162,15 @@ class EntityInstrumentation implements InstrumentationInterface
                 return $span;
             },
             function (SpanHandleInterface $span, ?object $subject, array $params, mixed $ret, ?Throwable $e): void {
-                $this->release($subject);
-                if ($e === null && $subject !== null && is_callable([$subject, 'count'])) {
-                    $span->setAttribute('bode.magento.collection.size', (int) $subject->count());
+                try {
+                    // Read the size while the guard is still set: Magento's count() calls load(), which is hooked.
+                    // Releasing first made that call start a new span for the same collection, whose own finish counted
+                    // again, level after level.
+                    if ($e === null && $subject !== null && is_callable([$subject, 'count'])) {
+                        $span->setAttribute('bode.magento.collection.size', (int) $subject->count());
+                    }
+                } finally {
+                    $this->release($subject);
                 }
             }
         );

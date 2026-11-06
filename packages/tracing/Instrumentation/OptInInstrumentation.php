@@ -28,10 +28,14 @@ class OptInInstrumentation implements InstrumentationInterface
      */
     public function register(Runtime $runtime): void
     {
+        // Hooks the protected _query, not the public query. Magento generates Mysql\Interceptor extends Mysql (core
+        // di.xml declares a plugin on AdapterInterface) and Interceptor::query() calls parent::query(), so the
+        // extension would run a hook on query twice per statement. query(), fetchAll(), rawQuery(), update() and
+        // multiQuery() all end in _query(), which the Interceptor does not override, so it runs once.
         $runtime->instrumenter->span(
             'sql',
             self::DB,
-            'query',
+            '_query',
             function (?object $subject, array $params) use ($runtime): SpanHandleInterface {
                 $sql = is_object($params[0] ?? null) ? (string) $params[0] : (string) ($params[0] ?? '');
                 $operation = $runtime->sql->operation($sql);

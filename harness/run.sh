@@ -20,11 +20,11 @@ export MSYS_NO_PATHCONV=1
 NET=bode-otel-net
 LGTM=bode-lgtm
 IMAGE=bode-otel-dev
-SCENARIOS=${SCENARIOS:-"storefront admin rest graphql cron-ok cron-fail cron-many indexer cache queue outbound gauges log entity-product events-bootstrap event-excluded-path cron-in-event collection-volume"}
+SCENARIOS=${SCENARIOS:-"storefront admin rest graphql cron-ok cron-fail cron-many indexer cache queue outbound gauges log entity-product events-bootstrap event-excluded-path cron-in-event collection-volume wrapped-calls"}
 # Groups of the trace-tree scenarios: the defaults that matter for roots plus everything that produces child spans.
 # "entities" is unknown (ignored) before Rail B merges, which is exactly why those checks are expected red until then.
 TREE_GROUPS=${TREE_GROUPS:-"http,cron,cli,queue,events,sql,redis,entities"}
-TREE_SCENARIOS=" entity-product events-bootstrap event-excluded-path cron-in-event collection-volume "
+TREE_SCENARIOS=" entity-product events-bootstrap event-excluded-path cron-in-event collection-volume wrapped-calls "
 
 php_run() { # php_run <extra docker args> -- <php args>
   docker run --rm --network "$NET" -v "$PWD:/repo" -v bode-otel-harness-vendor:/harness-vendor \

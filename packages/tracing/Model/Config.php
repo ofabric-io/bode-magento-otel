@@ -136,7 +136,8 @@ class Config implements InstrumentationGuardInterface
     /**
      * How many spans with the same name the entities group starts per unit of work (0 = no limit).
      *
-     * A page loads the same collection (the store collection) hundreds of times; the first ones tell the story.
+     * A page loads the same kind of collection many times (the store collection, attribute collections); the
+     * first ones tell the story.
      *
      * @return int
      */

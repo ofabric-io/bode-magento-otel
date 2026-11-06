@@ -186,12 +186,54 @@ namespace Magento\Framework\MessageQueue {
     }
 }
 
+namespace Magento\Framework\Interception {
+    interface InterceptorInterface
+    {
+    }
+}
+
+namespace Magento\Framework\ObjectManager {
+    interface NoninterceptableInterface
+    {
+    }
+}
+
 namespace Magento\Framework\DB\Adapter\Pdo {
+    /** Same call chain as Magento 2.4.9: every public entry point ends in the protected _query(). */
     class Mysql
     {
         public function query($sql, $bind = [])
         {
+            return $this->_query($sql, $bind);
+        }
+
+        public function multiQuery($sql, $bind = [])
+        {
+            return $this->_query($sql, $bind);
+        }
+
+        protected function _query($sql, $bind = [])
+        {
             return null;
+        }
+    }
+}
+
+namespace Magento\Framework\DB\Adapter\Pdo\Mysql {
+    /**
+     * What compiled DI generates because core di.xml declares a plugin on AdapterInterface: it overrides the public
+     * methods and calls parent::, so ext-opentelemetry runs a hook on Mysql::query for this frame and for the parent's.
+     */
+    class Interceptor extends \Magento\Framework\DB\Adapter\Pdo\Mysql implements \Magento\Framework\Interception\InterceptorInterface
+    {
+        public function query($sql, $bind = [])
+        {
+            return parent::query($sql, $bind);
+        }
+
+        public function multiQuery($sql, $bind = [])
+        {
+            return parent::multiQuery($sql, $bind);
         }
     }
 }
@@ -225,7 +267,7 @@ namespace Harness {
         /** One SQL statement through the (hooked) adapter, as a model/resource would issue it. */
         public static function sql(string $sql): void
         {
-            (new \Magento\Framework\DB\Adapter\Pdo\Mysql())->query($sql);
+            (new \Magento\Framework\DB\Adapter\Pdo\Mysql\Interceptor())->query($sql);
         }
     }
 }
@@ -238,6 +280,27 @@ namespace Magento\Framework\Event {
             \Harness\Nest::fire(__METHOD__, [$eventName, $data]);
 
             return $this;
+        }
+    }
+}
+
+namespace Magento\Framework\Event\Manager {
+    /**
+     * Generated lazy proxy (preference for ManagerInterface): extends the real class and forwards to a second instance, so
+     * the hook runs for the Proxy frame (one subject) and for the real Manager (another subject).
+     */
+    class Proxy extends \Magento\Framework\Event\Manager implements \Magento\Framework\ObjectManager\NoninterceptableInterface
+    {
+        private \Magento\Framework\Event\Manager $subject;
+
+        public function __construct()
+        {
+            $this->subject = new \Magento\Framework\Event\Manager();
+        }
+
+        public function dispatch($eventName, array $data = [])
+        {
+            return $this->subject->dispatch($eventName, $data);
         }
     }
 }
@@ -387,6 +450,17 @@ namespace Magento\Eav\Model\Entity\Collection {
 namespace Magento\Catalog\Model\ResourceModel\Product {
     class Collection extends \Magento\Eav\Model\Entity\Collection\AbstractCollection
     {
+    }
+}
+
+namespace Magento\Catalog\Model\ResourceModel\Product\Collection {
+    /** Generated Interceptor of the product collection: overrides load() and calls parent::load(). */
+    class Interceptor extends \Magento\Catalog\Model\ResourceModel\Product\Collection implements \Magento\Framework\Interception\InterceptorInterface
+    {
+        public function load($printQuery = false, $logQuery = false)
+        {
+            return parent::load($printQuery, $logQuery);
+        }
     }
 }
 

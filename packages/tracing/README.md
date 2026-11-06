@@ -24,7 +24,7 @@ bin/magento setup:upgrade
 - To record anything: `ext-opentelemetry` (PECL `opentelemetry`) and `open-telemetry/sdk`, `exporter-otlp`, `sem-conv`;
   `ext-protobuf` is recommended for OTLP over http/protobuf. Without them the module registers nothing.
 - Hooks are registered when Composer loads `registration.php`, i.e. on every PHP process, before Magento runs. That works
-  in production mode with compiled DI: hooks attach to the real classes, not to generated `Interceptor` subclasses.
+  in production mode with compiled DI. The extension runs a hook for every override of the hooked method, including the\n  classes Magento generates (`...\Interceptor` for plugins, `...\Proxy` for lazy dependencies); the module skips those\n  wrapper frames (pre and post alike), so one logical call is one span, never a nested pair.
 
 ## What is traced
 
@@ -37,7 +37,7 @@ bin/magento setup:upgrade
 | `cache` (on) | `cache flush\|clean` with the cache types, page cache clean. |
 | `queue` (on) | One root span per consumed message (`queue <topic>`), with consumer and outcome. |
 | `outbound` (on) | Guzzle calls as `HTTP <METHOD>`, with host and status; `traceparent` is sent along. |
-| `sql` (off) | Database queries: verb, bounded table, obfuscated text. |
+| `sql` (off) | Database queries: verb, bounded table, obfuscated text. Hooks `Pdo\Mysql::_query`, the method every public entry point (`query`, `fetchAll`, `rawQuery`, `update`, `multiQuery`) ends in, so a statement is one span whether or not Magento's generated `Interceptor` wraps the adapter. Includes the statements the adapter runs when it connects (`SET NAMES`...) when they happen inside a unit of work. |
 | `events` (off) | Dispatched Magento events (name only). |
 | `redis` (off) | Redis cache backend commands (command only). |
 | `entities` (off) | Entity `load`/`save`/`delete` and collection `load` spans (`entity <op> <entity type or main table>`, `collection load <table>`), so SQL and Redis spans nest under the business operation that caused them. Attributes: `bode.magento.entity.operation`, `bode.magento.entity.type` or `db.collection.name`, `bode.magento.collection.size` (rows, collections only). Never ids, field values or arguments; errors record the exception class only. One span per object even when an EAV entity delegates to a flat resource. `eav` and `business` are deprecated aliases of `entities`. Hook targets: `Magento\Framework\Model\ResourceModel\Db\AbstractDb::{load,save,delete}`, `Magento\Eav\Model\Entity\AbstractEntity::{load,save,delete}`, `Magento\Framework\EntityManager\EntityManager::{load,save,delete}` (products, categories and other modern entities, named after the model's event prefix), `Magento\Catalog\Model\ResourceModel\{Product,Category}::{load,save,delete}` (overrides that never call the parent), `Magento\Framework\Data\Collection\AbstractDb::load`, `Magento\Eav\Model\Entity\Collection\AbstractCollection::load`. |
@@ -67,7 +67,7 @@ message bodies.
 | `MAGENTO_OTEL_SPAN_CAP` | `500` | Spans per request, cron job or queue message; the rest are counted as dropped, and the counter resets for the next unit of work |
 | `MAGENTO_OTEL_SPAN_CAP_GROUPS` | none | Per-group caps inside the global cap, e.g. `entities:150,sql:200,events:100`. Invalid entries are ignored; groups without an entry are bound only by `MAGENTO_OTEL_SPAN_CAP`. No defaults until real span-volume data exists |
 | `MAGENTO_OTEL_SPAN_COLLAPSE_AFTER` | `0` (off) | `N>0`: after N spans from the same hook under the same parent span, further ones are not started and are counted as collapsed |
-| `MAGENTO_OTEL_ENTITY_REPEAT_LIMIT` | `10` | Entities group: spans with the same name (`collection load store`) started per unit of work; the rest are skipped and counted in `bode.magento.spans.collapsed`. `0` = no limit. Real Magento loads the same collection hundreds of times per page |
+| `MAGENTO_OTEL_ENTITY_REPEAT_LIMIT` | `10` | Entities group: spans with the same name (`collection load store`) started per unit of work; the rest are skipped and counted in `bode.magento.spans.collapsed`. `0` = no limit. A page loads the same kind of collection (store, attributes) many times |
 | `MAGENTO_OTEL_IP_MODE` | `truncate` | `full`, `truncate` (/24, /48), `hash`, `off` |
 | `MAGENTO_OTEL_USER_MODE` | `id` | `id`, `hash`, `off` (never e-mail or name) |
 | `MAGENTO_OTEL_HASH_SECRET` | none | Secret for the keyed hashes (session id, and IP/user in `hash` mode); without it they record nothing |

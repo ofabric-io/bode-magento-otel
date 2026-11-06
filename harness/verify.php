@@ -205,6 +205,24 @@ foreach ($expectations as $scenario => $expect) {
         $hits = array_filter($flat, static fn (array $s): bool => fnmatch($pattern, $s['name']));
         $report($scenario, "no span named $pattern", $hits === [], $marker);
     }
+    // Generated Interceptors and Proxies must not double a call: no span may sit directly under a span of the same name
+    // (and, for SQL, the same statement text). Real nesting of the same name (an event dispatched by an observer of the
+    // same event) is not expected in these scenarios.
+    $nested = [];
+    foreach ($traces as $spans) {
+        foreach ($spans as $s) {
+            $parent = $spans[$s['parent']] ?? null;
+            if ($parent !== null && $parent['name'] === $s['name']
+                && ($parent['attrs']['db.query.text'] ?? '') === ($s['attrs']['db.query.text'] ?? '')) {
+                $nested[$s['name']] = true;
+            }
+        }
+    }
+    $report($scenario, 'no span nested inside a same-name span' . ($nested ? ' (found: ' . implode(', ', array_slice(array_keys($nested), 0, 5)) . ')' : ''), $nested === [], null);
+    foreach ($expect['counts'] ?? [] as $pattern => $want) {
+        $got = count(array_filter($flat, static fn (array $s): bool => fnmatch($pattern, $s['name'])));
+        $report($scenario, "exactly $want span(s) named $pattern, found $got", $got === $want, null);
+    }
     if (isset($expect['max'])) {
         [$limit, $marker] = $expect['max'];
         $largest = $traces === [] ? 0 : max(array_map('count', $traces));
