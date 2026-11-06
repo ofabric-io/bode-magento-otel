@@ -91,11 +91,17 @@ class Instrumenter
 
                         return null;
                     } elseif (!$this->budget->tryAcquire($group, $this->repeatKey($class, $method))) {
+                        if ($group === 'entities') {
+                            error_log('TMPDEBUG refused ' . $class . '::' . $method . ' collapsed=' . $this->budget->collapsed());
+                        }
                         $this->stack->push(null);
 
                         return null;
                     }
                     $handle = $begin($subject, $params);
+                    if ($group === 'entities') {
+                        error_log('TMPDEBUG began ' . $class . '::' . $method . ' handle=' . ($handle === null ? 'null' : 'span'));
+                    }
                     if ($handle === null && !$rootOfUnit) {
                         // The hook chose to start nothing (e.g. an entity span already open for this object): the
                         // permission it was given must not count against the budget.
