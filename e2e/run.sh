@@ -185,7 +185,7 @@ case "${1:-}" in
     # The workflow's "all groups" step. Own service name, so trace-integrity can tell the spans of this run from the
     # rest of traces.jsonl and call every span outside the traces the scenarios started a stray.
     E2E_TRACING_GROUPS=${E2E_ENTITY_GROUPS:-all} E2E_SERVICE_NAME=bode-e2e-entities \
-      E2E_DEBUG=true E2E_SPAN_CAP=${E2E_ENTITY_SPAN_CAP:-800} E2E_SPAN_COLLAPSE_AFTER=${E2E_ENTITY_COLLAPSE:-8} E2E_SPAN_CAP_GROUPS=${E2E_ENTITY_CAPS:-events:100,sql:200,entities:400} "$0" web-up
+      E2E_DEBUG=true E2E_SPAN_CAP=${E2E_ENTITY_SPAN_CAP:-500} E2E_SPAN_COLLAPSE_AFTER=${E2E_ENTITY_COLLAPSE:-8} E2E_SPAN_CAP_GROUPS=${E2E_ENTITY_CAPS:-events:100,sql:200,entities:150} "$0" web-up
     E2E_SERVICE_NAME=bode-e2e "$0" scenario entities-seed
     for s in entities-product entities-category entities-home; do
       E2E_SERVICE_NAME=bode-e2e-entities "$0" scenario "$s"
@@ -193,7 +193,7 @@ case "${1:-}" in
     sleep 5 # the Collector's file exporter and the SDK's batch processor flush on a timer
     # Errors the telemetry swallowed (MAGENTO_OTEL_DEBUG): a hook that throws shows up here instead of as a missing span.
     echo "info  swallowed telemetry errors in the web server:"
-    docker logs "$WEB" 2>&1 | grep -E 'TMPDEBUG' | sed -E 's/^\[[^]]*\] //; s/used=[0-9]+ //' | sort | uniq -c | sort -rn | head -n 12 || true
+    docker logs "$WEB" 2>&1 | grep -iE 'bode|otel' | cut -c1-300 | sort | uniq -c | sort -rn | head -n 20 || true
     status=0
     for a in trace-integrity entities; do
       "$0" assert "$a" || status=1

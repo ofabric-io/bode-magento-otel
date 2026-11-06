@@ -61,11 +61,19 @@ class EntityInstrumentation implements InstrumentationInterface
     private WeakMap $open;
 
     /**
+     * Spans started per name, per unit of work (keyed by the root span, so a new unit starts from zero).
+     *
+     * @var WeakMap<object,array<string,int>>
+     */
+    private WeakMap $repeats;
+
+    /**
      * Creates the guard map.
      */
     public function __construct()
     {
         $this->open = new WeakMap();
+        $this->repeats = new WeakMap();
     }
 
     /**
@@ -104,8 +112,12 @@ class EntityInstrumentation implements InstrumentationInterface
                     return null;
                 }
                 $type = $this->entityType($subject, is_object($params[0] ?? null) ? $params[0] : null);
+                $name = 'entity ' . $operation . ' ' . $type['name'];
+                if (!$this->repeatAllowed($runtime, $name)) {
+                    return null;
+                }
                 $span = $runtime->spans->start(
-                    'entity ' . $operation . ' ' . $type['name'],
+                    $name,
                     SpanKind::KIND_INTERNAL,
                     ['bode.magento.entity.operation' => $operation, $type['attribute'] => $type['name']]
                 );
@@ -137,6 +149,9 @@ class EntityInstrumentation implements InstrumentationInterface
                     return null;
                 }
                 $table = $this->collectionTable($subject);
+                if (!$this->repeatAllowed($runtime, 'collection load ' . $table)) {
+                    return null;
+                }
                 $span = $runtime->spans->start(
                     'collection load ' . $table,
                     SpanKind::KIND_INTERNAL,
@@ -153,6 +168,34 @@ class EntityInstrumentation implements InstrumentationInterface
                 }
             }
         );
+    }
+
+    /**
+     * Whether one more span with this name may start in the current unit of work.
+     *
+     * Beyond the limit the span is skipped and counted as collapsed (root attribute bode.magento.spans.collapsed).
+     *
+     * @param Runtime $runtime
+     * @param string $name
+     * @return bool
+     */
+    private function repeatAllowed(Runtime $runtime, string $name): bool
+    {
+        $limit = $runtime->config->entityRepeatLimit();
+        $root = $runtime->stack->bottom();
+        if ($limit <= 0 || $root === null) {
+            return true;
+        }
+        $counts = $this->repeats[$root] ?? [];
+        $counts[$name] = ($counts[$name] ?? 0) + 1;
+        $this->repeats[$root] = $counts;
+        if ($counts[$name] > $limit) {
+            $runtime->budget->noteCollapsed();
+
+            return false;
+        }
+
+        return true;
     }
 
     /**

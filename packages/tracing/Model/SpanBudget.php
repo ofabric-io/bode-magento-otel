@@ -138,9 +138,6 @@ class SpanBudget
      */
     private function refuse(string $group): bool
     {
-        if ($group === 'entities') {
-            error_log('TMPDEBUG refuse used=' . $this->used . ' cap=' . $this->cap . ' groupUsed=' . ($this->groupUsed[$group] ?? 0) . ' groupCap=' . ($this->groupCaps[$group] ?? -1));
-        }
         $this->dropped++;
         $this->droppedTotal++;
         if (isset($this->groupCaps[$group])) {
@@ -148,6 +145,16 @@ class SpanBudget
         }
 
         return false;
+    }
+
+    /**
+     * Counts a span a hook chose not to start because it repeats one already recorded in this unit of work.
+     *
+     * @return void
+     */
+    public function noteCollapsed(): void
+    {
+        $this->collapsed++;
     }
 
     /**

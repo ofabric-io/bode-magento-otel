@@ -15,6 +15,7 @@ use Bode\Tracing\Api\InstrumentationGuardInterface;
  * MAGENTO_OTEL_SPAN_CAP        maximum spans per trace, cron job or queue message (default 500)
  * MAGENTO_OTEL_SPAN_CAP_GROUPS  per-group caps, "entities:150,sql:200"; invalid entries ignored; none by default
  * MAGENTO_OTEL_SPAN_COLLAPSE_AFTER  0 (default) = off; N > 0 stops starting repeated sibling spans after N
+ * MAGENTO_OTEL_ENTITY_REPEAT_LIMIT  same-named entity spans per unit of work (default 10, 0 = no limit)
  * MAGENTO_OTEL_ENABLED         "false" disables everything
  */
 class Config implements InstrumentationGuardInterface
@@ -130,6 +131,18 @@ class Config implements InstrumentationGuardInterface
     public function spanCollapseAfter(): int
     {
         return max(0, $this->env->int('MAGENTO_OTEL_SPAN_COLLAPSE_AFTER', 0));
+    }
+
+    /**
+     * How many spans with the same name the entities group starts per unit of work (0 = no limit).
+     *
+     * A page loads the same collection (the store collection) hundreds of times; the first ones tell the story.
+     *
+     * @return int
+     */
+    public function entityRepeatLimit(): int
+    {
+        return max(0, $this->env->int('MAGENTO_OTEL_ENTITY_REPEAT_LIMIT', 10));
     }
 
     /**

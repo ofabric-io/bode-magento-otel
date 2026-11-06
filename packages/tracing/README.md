@@ -67,6 +67,7 @@ message bodies.
 | `MAGENTO_OTEL_SPAN_CAP` | `500` | Spans per request, cron job or queue message; the rest are counted as dropped, and the counter resets for the next unit of work |
 | `MAGENTO_OTEL_SPAN_CAP_GROUPS` | none | Per-group caps inside the global cap, e.g. `entities:150,sql:200,events:100`. Invalid entries are ignored; groups without an entry are bound only by `MAGENTO_OTEL_SPAN_CAP`. No defaults until real span-volume data exists |
 | `MAGENTO_OTEL_SPAN_COLLAPSE_AFTER` | `0` (off) | `N>0`: after N spans from the same hook under the same parent span, further ones are not started and are counted as collapsed |
+| `MAGENTO_OTEL_ENTITY_REPEAT_LIMIT` | `10` | Entities group: spans with the same name (`collection load store`) started per unit of work; the rest are skipped and counted in `bode.magento.spans.collapsed`. `0` = no limit. Real Magento loads the same collection hundreds of times per page |
 | `MAGENTO_OTEL_IP_MODE` | `truncate` | `full`, `truncate` (/24, /48), `hash`, `off` |
 | `MAGENTO_OTEL_USER_MODE` | `id` | `id`, `hash`, `off` (never e-mail or name) |
 | `MAGENTO_OTEL_HASH_SECRET` | none | Secret for the keyed hashes (session id, and IP/user in `hash` mode); without it they record nothing |

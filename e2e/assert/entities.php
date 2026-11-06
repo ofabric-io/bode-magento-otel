@@ -10,7 +10,7 @@ require __DIR__ . '/../lib/tree.php';
  *  - the product page and the category page produce sql and event spans, all inside their request's tree;
  *  - EXPECT_AFTER B: the "entities" group adds `entity load <type>` / `collection load ...` spans, and the queries a
  *    load issues are children of that load (`GET * > entity load catalog_product > SELECT catalog_product_entity`);
- *  - the span cap holds: a trace never exceeds MAGENTO_OTEL_SPAN_CAP (800 in the entities run) plus a small allowance for the
+ *  - the span cap holds: a trace never exceeds MAGENTO_OTEL_SPAN_CAP (500) plus a small allowance for the
  *    root and collapse summaries;
  *  - nothing private: no SQL literal of the seed data, no query string in any attribute.
  *
@@ -37,7 +37,7 @@ foreach (['entities-product' => $product, 'entities-category' => $category] as $
     check("$scenario: has sql spans (SELECT ...)", $any($trace, 'SELECT *'));
     check("$scenario: has event spans (event ...)", $any($trace, 'event *'));
     check("$scenario: root is GET *", pathExists($trace, 'GET *'));
-    check("$scenario: " . count($trace) . ' spans, within the cap', count($trace) <= 860);
+    check("$scenario: " . count($trace) . ' spans, within the cap', count($trace) <= 560);
 }
 
 // Diagnostics for a failing run: the distinct non-SQL span names of each trace, so a wrong hook target or name is visible.

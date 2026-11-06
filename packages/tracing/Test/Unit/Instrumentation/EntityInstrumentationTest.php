@@ -165,6 +165,34 @@ class EntityInstrumentationTest extends TestCase
         }
     }
 
+    public function testRepeatedSameNamedCollectionLoadsAreCappedPerUnitAndCountedAsCollapsed(): void
+    {
+        for ($i = 0; $i < 25; $i++) {
+            $this->invoke(self::DATA_COLLECTION . '::load', new FakeCollection('store', 1), []);
+        }
+        $this->invoke(self::FLAT . '::load', new FakeResource('sales_order'), [new \stdClass(), 1]);
+
+        $names = array_map(static fn ($s): string => $s->getName(), $this->exporter->getSpans());
+        self::assertSame(10, count(array_keys($names, 'collection load store', true)), 'default limit is 10 per name');
+        self::assertContains('entity load sales_order', $names, 'a different name is not affected');
+        self::assertSame(15, $this->runtime->budget->collapsed());
+        self::assertSame(0, $this->runtime->stack->depth() - 1, 'hooks stay balanced');
+    }
+
+    public function testRepeatLimitStartsOverWithTheNextUnitOfWork(): void
+    {
+        for ($i = 0; $i < 12; $i++) {
+            $this->invoke(self::DATA_COLLECTION . '::load', new FakeCollection('store', 1), []);
+        }
+        // A new request: a new root span.
+        $this->runtime->stack->clear();
+        $this->runtime->stack->pushRoot(new FakeSpan());
+        $before = count($this->exporter->getSpans());
+        $this->invoke(self::DATA_COLLECTION . '::load', new FakeCollection('store', 1), []);
+
+        self::assertSame($before + 1, count($this->exporter->getSpans()));
+    }
+
     public function testRegistersNothingWhenTheGroupIsOff(): void
     {
         $registrar = new FakeRegistrar();
