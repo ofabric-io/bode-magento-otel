@@ -156,7 +156,7 @@ class EntityInstrumentation implements InstrumentationInterface
                 $span = $runtime->spans->start(
                     'collection load ' . $table,
                     SpanKind::KIND_INTERNAL,
-                    ['bode.magento.entity.operation' => 'load', 'db.collection.name' => $table]
+                    ['bode.magento.entity.operation' => 'load', 'db.collection.name' => $table, 'bode.debug.object' => spl_object_id($subject), 'bode.debug.class' => get_class($subject)]
                 );
                 $this->open[$subject] = true;
 
