@@ -159,6 +159,10 @@ class EntityInstrumentationTest extends TestCase
             self::assertNotNull($this->runtime->stack->top(), "iteration $i: the span was started");
             unset($model);
         }
+        // Detach what the test deliberately left open, innermost first, so the global context is clean for other tests.
+        foreach ($this->runtime->stack->unwindToRoot() as $leaked) {
+            $leaked->end();
+        }
     }
 
     public function testRegistersNothingWhenTheGroupIsOff(): void
