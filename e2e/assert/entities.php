@@ -40,6 +40,15 @@ foreach (['entities-product' => $product, 'entities-category' => $category] as $
     check("$scenario: " . count($trace) . ' spans, within the cap', count($trace) <= 600);
 }
 
+// Diagnostics for a failing run: the distinct non-SQL span names of each trace, so a wrong hook target or name is visible.
+foreach (['entities-product' => $product, 'entities-category' => $category] as $scenario => $trace) {
+    $distinct = array_values(array_unique(array_filter(
+        $names($trace),
+        static fn (string $n): bool => !str_starts_with($n, 'SELECT ') && !str_starts_with($n, 'redis ')
+    )));
+    echo "info  $scenario: " . count($distinct) . ' distinct non-SQL span names: ' . implode(' | ', array_slice($distinct, 0, 60)) . "\n";
+}
+
 check('entities-product: has entity load catalog_product', $any($product, 'entity load catalog_product'));
 check(
     'entities-product: GET * > entity load catalog_product > SELECT catalog_product_entity',
