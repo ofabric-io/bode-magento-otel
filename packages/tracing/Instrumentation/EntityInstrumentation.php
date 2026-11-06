@@ -85,8 +85,7 @@ class EntityInstrumentation implements InstrumentationInterface
             self::GROUP,
             $class,
             $operation,
-            function (?object $subject, array $params) use ($runtime, $operation, $class): ?SpanHandleInterface {
-                error_log('TMPDEBUG bode-entity ' . $class . '::' . $operation . ' subject=' . ($subject === null ? 'null' : get_class($subject)) . ' p0=' . (is_object($params[0] ?? null) ? get_class($params[0]) : gettype($params[0] ?? null)) . ' guard=' . (is_object($params[0] ?? null) && isset($this->open[spl_object_id($params[0])]) ? 'open' : 'free'));
+            function (?object $subject, array $params) use ($runtime, $operation): ?SpanHandleInterface {
                 // The model being handled is the first argument; the resource is shared by every model of its type.
                 $key = $this->key($subject, $params);
                 if ($key === null || isset($this->open[spl_object_id($key)])) {

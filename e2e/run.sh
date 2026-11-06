@@ -47,8 +47,10 @@ COMPOSER_CACHE_MOUNT=${COMPOSER_CACHE_MOUNT:-bode-e2e-composer-cache}
 E2E_TRACING_GROUPS=${E2E_TRACING_GROUPS:-http,cron,cli,indexer,cache,queue,outbound}
 E2E_SERVICE_NAME=${E2E_SERVICE_NAME:-bode-e2e}
 # Volume controls of the web server (empty = package defaults). Real Magento dispatches hundreds of events per page, so with
-# every group on the default 500-span budget is gone before the entity loads: the entities run sets per-group caps.
+# every group on the default 500-span budget is gone before the entity loads, and a page repeats the same collection load
+# (the store collection) hundreds of times: the entities run sets per-group caps and collapses repeated siblings.
 E2E_SPAN_CAP_GROUPS=${E2E_SPAN_CAP_GROUPS:-}
+E2E_SPAN_COLLAPSE_AFTER=${E2E_SPAN_COLLAPSE_AFTER:-}
 SCENARIOS="home search not-found rest graphql admin-login admin-save cache-status indexer cron-ok cron-fail queue uncaught fatal"
 ASSERTIONS="spans di metrics logs disabled-mode"
 
@@ -131,7 +133,7 @@ case "${1:-}" in
       -e OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf -e "OTEL_EXPORTER_OTLP_ENDPOINT=http://$COLLECTOR:4318" \
       -e OTEL_METRICS_EXPORT_INTERVAL=1000 -e OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE=delta \
       -e MAGENTO_OTEL_TRACING_GROUPS="$E2E_TRACING_GROUPS" \
-      -e MAGENTO_OTEL_SPAN_CAP_GROUPS="$E2E_SPAN_CAP_GROUPS" -e MAGENTO_OTEL_DEBUG="${E2E_DEBUG:-}" \
+      -e MAGENTO_OTEL_SPAN_CAP_GROUPS="$E2E_SPAN_CAP_GROUPS" -e MAGENTO_OTEL_SPAN_COLLAPSE_AFTER="$E2E_SPAN_COLLAPSE_AFTER" -e MAGENTO_OTEL_DEBUG="${E2E_DEBUG:-}" \
       -e MAGENTO_OTEL_IP_MODE=full -e MAGENTO_OTEL_CORRELATION_HEADERS=X-E2E-Run \
       -e MAGENTO_OTEL_LOGS_OUTPUT=file,stdout -e MAGENTO_OTEL_LOGS_ENABLED=true \
       "$IMAGE" php -S 0.0.0.0:8000 phpserver/router.php >/dev/null
@@ -157,7 +159,7 @@ case "${1:-}" in
       -e OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf -e "OTEL_EXPORTER_OTLP_ENDPOINT=http://$COLLECTOR:4318" \
       -e OTEL_METRICS_EXPORT_INTERVAL=1000 -e OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE=delta \
       -e MAGENTO_OTEL_TRACING_GROUPS="$E2E_TRACING_GROUPS" \
-      -e MAGENTO_OTEL_SPAN_CAP_GROUPS="$E2E_SPAN_CAP_GROUPS" -e MAGENTO_OTEL_DEBUG="${E2E_DEBUG:-}" \
+      -e MAGENTO_OTEL_SPAN_CAP_GROUPS="$E2E_SPAN_CAP_GROUPS" -e MAGENTO_OTEL_SPAN_COLLAPSE_AFTER="$E2E_SPAN_COLLAPSE_AFTER" -e MAGENTO_OTEL_DEBUG="${E2E_DEBUG:-}" \
       -e MAGENTO_OTEL_IP_MODE=full -e MAGENTO_OTEL_CORRELATION_HEADERS=X-E2E-Run \
       -e MAGENTO_OTEL_LOGS_OUTPUT=file,stdout -e MAGENTO_OTEL_LOGS_ENABLED=true \
       "$IMAGE" php /e2e/scenarios/run.php "$@"
@@ -182,7 +184,7 @@ case "${1:-}" in
     # The workflow's "all groups" step. Own service name, so trace-integrity can tell the spans of this run from the
     # rest of traces.jsonl and call every span outside the traces the scenarios started a stray.
     E2E_TRACING_GROUPS=${E2E_ENTITY_GROUPS:-all} E2E_SERVICE_NAME=bode-e2e-entities \
-      E2E_DEBUG=true E2E_SPAN_CAP_GROUPS=${E2E_ENTITY_CAPS:-events:100,sql:200,entities:150} "$0" web-up
+      E2E_DEBUG=true E2E_SPAN_COLLAPSE_AFTER=${E2E_ENTITY_COLLAPSE:-8} E2E_SPAN_CAP_GROUPS=${E2E_ENTITY_CAPS:-events:100,sql:200,entities:150} "$0" web-up
     E2E_SERVICE_NAME=bode-e2e "$0" scenario entities-seed
     for s in entities-product entities-category entities-home; do
       E2E_SERVICE_NAME=bode-e2e-entities "$0" scenario "$s"
@@ -190,7 +192,7 @@ case "${1:-}" in
     sleep 5 # the Collector's file exporter and the SDK's batch processor flush on a timer
     # Errors the telemetry swallowed (MAGENTO_OTEL_DEBUG): a hook that throws shows up here instead of as a missing span.
     echo "info  swallowed telemetry errors in the web server:"
-    docker logs "$WEB" 2>&1 | grep -E 'TMPDEBUG' | sed -E 's/^\[[^]]*\] //; s/ used=[0-9]+//' | sort | uniq -c | sort -rn || true
+    docker logs "$WEB" 2>&1 | grep -iE 'bode|otel' | cut -c1-300 | sort | uniq -c | sort -rn | head -n 20 || true
     status=0
     for a in trace-integrity entities; do
       "$0" assert "$a" || status=1
